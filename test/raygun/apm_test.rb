@@ -1071,6 +1071,20 @@ class Raygun::ApmTest < Raygun::Test
       assert_equal 6000, config.proton_udp_port
     end
 
+    def test_tcp_defaults
+      config = Raygun::Apm::Config.new({})
+      assert_equal '127.0.0.1', config.proton_tcp_host
+      assert_equal 2799, config.proton_tcp_port
+    end
+
+    def test_tcp_host_port_configs
+      config = Raygun::Apm::Config.new({})
+      config.env["PROTON_TCP_HOST"] = "8.8.8.8"
+      config.env["PROTON_TCP_PORT"] = "6000"
+      assert_equal "8.8.8.8", config.proton_tcp_host
+      assert_equal 6000, config.proton_tcp_port
+    end
+
     def test_loglevel
       config = Raygun::Apm::Config.new({})
       assert_equal Raygun::Apm::Tracer::LOG_NONE, config.loglevel
