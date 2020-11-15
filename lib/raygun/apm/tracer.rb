@@ -1,5 +1,6 @@
 require 'raygun/apm/blacklist'
 require 'rbconfig'
+require "socket"
 
 module Raygun
   module Apm
@@ -30,7 +31,6 @@ module Raygun
       end
 
       def udp_sink!
-        require "socket"
         sock = UDPSocket.new
         # For UDP sockets, SO_SNDBUF is the max packet size and NOT send buffer as with a connection oriented transport
         sock.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDBUF, Tracer::BATCH_PACKET_SIZE)
@@ -40,10 +40,30 @@ module Raygun
           port: config.proton_udp_port,
           receive_buffer_size: sock.getsockopt(Socket::SOL_SOCKET, Socket::SO_RCVBUF).int
         )
-      # Any fails here is kamikaze for the tracer
       rescue => e
         # XXX works for the middleware wrapped case, not for standalone - revisit
         raise Raygun::Apm::FatalError, "Raygun APM UDP sink could not be initialized: #{e.message} #{e.backtrace.join("\n")}"
+      end
+
+      def tcp_sink!
+        sock = TCPSocket.new(config.proton_tcp_host, config.proton_tcp_port)
+        self.tcp_sink(
+          socket: sock,
+          host: config.proton_udp_host,
+          port: config.proton_udp_port,
+          receive_buffer_size: sock.getsockopt(Socket::SOL_SOCKET, Socket::SO_RCVBUF).int
+        )
+      rescue => e
+        # XXX works for the middleware wrapped case, not for standalone - revisit
+        raise Raygun::Apm::FatalError, "Raygun APM TCP sink could not be initialized: #{e.message} #{e.backtrace.join("\n")}"
+      end
+
+      def enable_sink!
+        if config.proton_network_mode == "Udp"
+          udp_sink!
+        elsif config.proton_network_mode == "Tcp"
+          tcp_sink!
+        end
       end
 
       private
