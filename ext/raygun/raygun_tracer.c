@@ -128,7 +128,7 @@ void rb_rg_tracer_mark(void *ptr)
   rb_gc_mark(tracer->sink_data.sock);
   rb_gc_mark(tracer->sink_data.host);
   rb_gc_mark(tracer->sink_data.port);
-  // Noop for UDP sink, required for the callback sink
+  // Noop for UDP and TCP sinks, required for the callback sink
   rb_gc_mark(tracer->sink_data.payload);
   rb_gc_mark(tracer->timer_thread);
   rb_gc_mark(tracer->sink_thread);
@@ -188,7 +188,7 @@ void rb_rg_tracer_free(void *ptr)
   rb_nativethread_lock_destroy(&tracer->method_lock);
   rb_nativethread_lock_destroy(&tracer->thread_lock);
   // Free for UDP and other transport oriented sinks - no bipbuf allocated for callback sink
-  if (RTEST(tracer->sink_data.sock))
+  if ((tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP) && RTEST(tracer->sink_data.sock))
     bipbuf_free(tracer->sink_data.ringbuf.bipbuf);
 
   // Free the source of truth for the radix trees
@@ -243,7 +243,7 @@ void rb_rg_tracer_free(void *ptr)
   // Remove the special GC registration to ALWAYS consider the process type string as in use
   rb_gc_unregister_address(&tracer->process_type);
   // Unregister for UDP or other transport oriented sinks only
-  if (RTEST(tracer->sink_data.sock))
+  if ((tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP) && RTEST(tracer->sink_data.sock))
     rb_gc_unregister_address(&tracer->sink_data.payload);
   // Finally free the tracer
   xfree(tracer);
@@ -1731,11 +1731,15 @@ static VALUE rb_rg_tracer_callback_sink_set(VALUE obj, VALUE callback)
     rb_raise(rb_eRaygunFatal, "Expected a sink callback that accepts exactly 1 argument");
   }
 
+  if (tracer->sink_data.type != RB_RG_TRACER_SINK_NONE)
+    rb_raise(rb_eRaygunFatal, "Only one profiler sink can be set!");
+
   // Inform the encoder context of the Proc aware callback sink
   tracer->context->sink = rb_rg_callback_sink;
   // Set the Proc on sink data - the GC callbacks on the Tracer knows how to handle this properly so the Proc does not get collected before it's
   // not needed anymore
   tracer->sink_data.callback = callback;
+  tracer->sink_data.type = RB_RG_TRACER_SINK_CALLBACK;
   return callback;
 }
 
@@ -1828,6 +1832,9 @@ static VALUE rb_rg_tracer_udp_sink_set(int argc, VALUE* argv, VALUE obj)
     rb_raise(rb_eRaygunFatal, "Expected the UDP receive buffer size to be a numerical value");
   }
 
+  if (tracer->sink_data.type != RB_RG_TRACER_SINK_NONE)
+    rb_raise(rb_eRaygunFatal, "Only one profiler sink can be set!");
+
   // Inform the encoder to use the UDP sink function
   tracer->context->sink = rb_rg_batched_sink;
 
@@ -1882,6 +1889,7 @@ static VALUE rb_rg_tracer_udp_sink_set(int argc, VALUE* argv, VALUE obj)
       printf("[Raygun APM] UDP dispatch thread started\n");
     }
 #endif
+  tracer->sink_data.type = RB_RG_TRACER_SINK_UDP;
   return socket;
 }
 
@@ -1904,6 +1912,8 @@ static VALUE rb_rg_tracer_alloc(VALUE obj)
 
   // Default to the production environment (much cheaper method ID hashing)
   tracer->environment = RB_RG_TRACER_ENV_PRODUCTION;
+  // Default to no sink set
+  tracer->sink_data.type = RB_RG_TRACER_SINK_NONE;
   // Default to not wanting to debug the blacklist
   tracer->debug_blacklist = false;
   // Initializes the symbol table for tracking method info discovered during tracing.
@@ -2610,7 +2620,14 @@ void _init_raygun_tracer()
   rg_tracer_const("METHOD_SOURCE_JIT_COMPILATION", RG_METHOD_SOURCE_JIT_COMPILATION);
   rg_tracer_const("METHOD_SOURCE_GARBAGE_COLLECTION", RG_METHOD_SOURCE_GARBAGE_COLLECTION);
 
+  // For network transports
   rg_tracer_const("BATCH_PACKET_SIZE", RG_BATCH_PACKET_SIZE);
+
+  // Sinks
+  rg_tracer_const("SINK_NONE", RB_RG_TRACER_SINK_NONE);
+  rg_tracer_const("SINK_UDP", RB_RG_TRACER_SINK_UDP);
+  rg_tracer_const("SINK_TCP", RB_RG_TRACER_SINK_TCP);
+  rg_tracer_const("SINK_CALLBACK", RB_RG_TRACER_SINK_CALLBACK);
 
 #ifdef RB_RG_DEBUG
   rb_define_const(rb_cRaygunTracer, "DEBUG_BUILD", Qtrue);

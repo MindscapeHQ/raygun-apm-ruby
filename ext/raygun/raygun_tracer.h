@@ -38,12 +38,23 @@ enum rb_rg_tracer_environment_t
 
 #define RB_RG_TRACER_BUILTIN_METHODS_TRANSLATED 5
 
+// Sink type used by the tracer
+
+enum rb_rg_tracer_sink_t
+{
+  RB_RG_TRACER_SINK_NONE = 0x1,
+  RB_RG_TRACER_SINK_CALLBACK = 0x2,
+  RB_RG_TRACER_SINK_UDP = 0x3,
+  RB_RG_TRACER_SINK_TCP = 0x4
+};
+
 struct rb_rg_tracer_t;
 
 // Container that represents the profiler's chosen sink state
 
 typedef struct _rb_rg_sink_data_t {
     struct rb_rg_tracer_t *tracer;
+    rg_byte_t type;
     rg_ringbuf_t ringbuf;
     bool running;
     // XXX this should probably be an union
