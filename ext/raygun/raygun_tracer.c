@@ -189,7 +189,7 @@ void rb_rg_tracer_free(void *ptr)
   rb_nativethread_lock_destroy(&tracer->method_lock);
   rb_nativethread_lock_destroy(&tracer->thread_lock);
   // Free for UDP and other transport oriented sinks - no bipbuf allocated for callback sink
-  if ((tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP) && RTEST(tracer->sink_data.sock))
+  if ((tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP))
     bipbuf_free(tracer->sink_data.ringbuf.bipbuf);
 
   // Free the source of truth for the radix trees
@@ -244,7 +244,7 @@ void rb_rg_tracer_free(void *ptr)
   // Remove the special GC registration to ALWAYS consider the process type string as in use
   rb_gc_unregister_address(&tracer->process_type);
   // Unregister for UDP or other transport oriented sinks only
-  if ((tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP) && RTEST(tracer->sink_data.sock))
+  if ((tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP))
     rb_gc_unregister_address(&tracer->sink_data.payload);
   // Finally free the tracer
   xfree(tracer);
@@ -303,7 +303,7 @@ size_t rb_rg_tracer_size(const void *ptr)
           st_memsize(tracer->methodinfo) +
           st_memsize(tracer->threadsinfo);
   // Add the ringbuffer allocated size, for transport oriented sinks
-  if (RTEST(tracer->sink_data.sock)) size += bipbuf_size(tracer->sink_data.ringbuf.bipbuf);
+  if (tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP) size += bipbuf_size(tracer->sink_data.ringbuf.bipbuf);
   // Now add the values of the trace contexts table as well
   st_foreach(tracer->tracecontexts, rb_rg_add_trace_context_size_i, (st_data_t)&size);
   // Now add the values of the methodinfo table as well
@@ -659,7 +659,7 @@ static void rb_rg_async_emit_methodinfos(const rb_rg_tracer_t *tracer) {
   // No need to emit anything if the methodinfo table is empty
   if (UNLIKELY(tracer->methodinfo->num_entries == 0)) return;
   // No need to emit anything if we're not using a transport oriented sink
-  if (UNLIKELY(!RTEST(tracer->sink_data.sock))) return;
+  if (UNLIKELY(!(tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP))) return;
 #ifdef RB_RG_DEBUG
     if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_INFO && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST)) {
       printf("[Raygun APM] Syncing the global whitelisted method table with the Agent\n");
