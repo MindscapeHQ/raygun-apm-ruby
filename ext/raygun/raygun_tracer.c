@@ -610,7 +610,7 @@ static int rb_rg_batched_sink(rg_context_t *context, void *userdata, const rg_ev
 static VALUE rb_rg_udp_sink_send(VALUE ptr)
 {
   rb_rg_sink_data_t *data = (rb_rg_sink_data_t *)ptr;
-  return rb_funcall(data->sock, rb_rg_id_write, 1, data->payload);
+  return rb_funcall(data->sock, rb_rg_id_send, 4, data->payload, INT2NUM(0), data->host, data->port);
 }
 
 // Wrapped function call and this kind of isn't great that we need to invoke rb_funcall, but the Socket extension does not provide low level APIs and it would
@@ -620,7 +620,7 @@ static VALUE rb_rg_udp_sink_send(VALUE ptr)
 static VALUE rb_rg_tcp_sink_send(VALUE ptr)
 {
   rb_rg_sink_data_t *data = (rb_rg_sink_data_t *)ptr;
-  return rb_funcall(data->sock, rb_rg_id_send, 4, data->payload, INT2NUM(0), data->host, data->port);
+  return rb_funcall(data->sock, rb_rg_id_write, 1, data->payload);
 }
 
 // Force flush a batched sink with a special case NULL event
@@ -784,6 +784,7 @@ static VALUE rb_rg_udp_sink_thread(void *ptr)
 #ifdef RB_RG_DEBUG
         if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_ERROR && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST))
           printf("[Raygun APM] UDP thread failed to send\n");
+        rb_jump_tag(status);
 #endif
         rb_rg_log_silenced_error();
         // Clearing error info to ignore the caught exception
@@ -875,6 +876,7 @@ static VALUE rb_rg_tcp_sink_thread(void *ptr)
 #ifdef RB_RG_DEBUG
         if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_ERROR && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST))
           printf("[Raygun APM] TCP thread failed to send\n");
+        rb_jump_tag(status);
 #endif
         // Clearing error info to ignore the caught exception
         rb_set_errinfo(Qnil);
@@ -2736,7 +2738,7 @@ static VALUE rb_rg_tracer_diagnostics(VALUE obj)
   printf("[Pointers] encoder context: %p threadsinfo: %p methodinfo: %p sink_data: %p batch: %p bipbuf: %p\n", (void *)tracer->context, (void *)tracer->threadsinfo, (void *)tracer->methodinfo, (void *)&tracer->sink_data, (void *)&tracer->sink_data.batch, (void *)tracer->sink_data.ringbuf.bipbuf);
   printf("[Execution context] Raygun thread: %d Ruby current thread: %p thread group: %ld\n", th->tid, (void *)thread, rb_rg_thread_group(GET_THREAD()));
   printf("[Ruby threads] timer thread: %p sink thread: %p\n", (void *)tracer->timer_thread, (void *)tracer->sink_thread);
-  if (NIL_P(tracer->sink_data.payload)) {
+  if (tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP) {
     printf("[Encoder] batched: %lu raw: %lu flushed: %lu resets: %lu batches: %lu\n", tracer->sink_data.encoded_batched, tracer->sink_data.encoded_raw, tracer->sink_data.flushed, tracer->sink_data.resets, tracer->sink_data.batches);
     printf("[Dispatch] batch count: %d sequence: %d batch pid: %d sink running: %d bytes sent: %lu failed sends: %lu jittered_sends: %lu\n", tracer->sink_data.batch.count, tracer->sink_data.batch.length, tracer->sink_data.batch.pid, tracer->sink_data.running, tracer->sink_data.bytes_sent, tracer->sink_data.failed_sends, tracer->sink_data.jittered_sends);
     printf("[Buffer] size: %d max used: %lu used: %d unused: %d\n", bipbuf_size(tracer->sink_data.ringbuf.bipbuf), tracer->sink_data.max_buf_used, bipbuf_used(tracer->sink_data.ringbuf.bipbuf), bipbuf_unused(tracer->sink_data.ringbuf.bipbuf));
