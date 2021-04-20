@@ -1,0 +1,854 @@
+= Raygun Application Performance Monitoring Internals
+
+== Building
+
+All of the released gems for the Ruby APM profiler are compiled and statically linked with <code>libruby</code> at build time. The gems produced have native
+C extensions compiled to a shared object that's loaded at runtime and does not require a build environment or any other toolchain for customers to use. Such
+gems are referred to as FAT gems and is distributed with a directory layout like the following for rubies 2.5 through 2.7 respectively:
+
+* <code>lib/raygun/2.5/raygun_ext.so</code>
+* <code>lib/raygun/2.6/raygun_ext.so</code>
+* <code>lib/raygun/2.7/raygun_ext.so</code>
+
+At runtime the main gem entrypoint loads the extensions like this and loads the correct extension for the current Ruby version:
+
+  begin
+    # Attempt to load a precompiled shared object (released gem)
+    RUBY_VERSION =~ /(\d+\.\d+)/
+    require "raygun/#{$1}/raygun_ext"
+  rescue LoadError
+    # Attempt to load the development specific extension (non-released gem, local dev)
+    require "raygun/raygun_ext"
+  end
+
+We rely on the excellent and mature {rake-compiler}[https://github.com/rake-compiler/rake-compiler] project for building the native extensions.
+
+There's 2 workflows we use for releasing:
+
+* A <code>darwin-universal</code> build which requires a Mac (Catalina at present)
+* A Docker based workflow for compiling the Linux gems and also cross compiles binaries for Windows using the {mingw}[http://www.mingw.org/] toolkit
+
+=== Preparing for a release
+
+Once a unit of work or Pull Request is complete and has been merged, it's important to bump the version for this release and to also add the <code>CHANGELOG.rdoc</code>
+entries.
+
+The workflow is:
+
+* Bump the version in <code>lib/raygun/version.rb</code> (the <code>VERSION</code> constant)
+* Run <code>bundle install</code> - this syncs the current version with <code>Gemfile.lock</code>
+* Add an entry using the last one as a template to <code>CHANGELOG.rdoc</code> - a git commit or several as bullet points is a helpful diff since the large release.
+* Commit with git
+
+The <code>CHANGELOG.rdoc</code> file is private (not included in the gem) and as such can be used for sensitive comments as well.
+
+=== Building for Linux and Windows
+
+For Linux and Windows builds we rely on the {rake-compile-dock}[https://github.com/rake-compiler/rake-compiler-dock] which builds on rake-compiler and provides
+a reliable Docker based environment for building FAT binary gems. This utility however requires a complete Docker runtime for the host environment
+
+To invoke it, we need to execute the <code>bundle exec rake gem:native</code> task as per:
+
+  raygun-ruby@CarbonX1:~/src/raygun-apm-ruby$ bundle exec rake -T
+  rake build               # Build raygun-apm-1.0.49.gem into the pkg directory
+  rake clean               # Remove any temporary products
+  rake clobber             # Remove any generated files
+  rake clobber_rdoc        # Remove RDoc HTML files
+  rake compile             # Compile all the extensions
+  rake compile:raygun_ext  # Compile raygun_ext
+  rake gem:native          # Compile native gems for distribution (Linux and Windows) <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+  rake gem:native:darwin   # Compile native gems for distribution (Darwin) - 
+  rake install             # Build and install raygun-apm-1.0.49.gem into system gems
+  rake install:local       # Build and install raygun-apm-1.0.49.gem into system gems without network access
+  rake perf                # Run a suite of performance tests to keep tabs on overhead
+  rake rdoc                # Build RDoc HTML files
+  rake release[remote]     # Create tag v1.0.49 and build and push raygun-apm-1.0.49.gem to rubygems.org
+  rake rerdoc              # Rebuild RDoc HTML files
+  rake test                # Run tests
+  rake valgrind            # Run the test suite with valgrind
+
+This spins up the build environment and usually takes about 2 minutes to compile the following matrix (12 compile flows):
+
+* 3 ruby versions, 2.5 through 2.7
+* Linux 32 bit, Linux 64 bit
+* Windows 32 bit, Linux 32 bit
+
+At the end of a build procedure for version <code>1.0.49</code> one would expect to see the following output in the pkg/ directory:
+
+  raygun-ruby@CarbonX1:~/src/raygun-apm-ruby$ ls -la pkg
+  total 648
+  drwxr-xr-x  6 raygun-ruby raygun-ruby   4096 jul  1 11:30 .
+  drwxr-xr-x 12 raygun-ruby raygun-ruby   4096 jul  2 22:55 ..
+  drwxr-xr-x  5 raygun-ruby raygun-ruby   4096 jul  1 11:29 raygun-apm-1.0.49-x64-mingw32
+  -rw-r--r--  1 raygun-ruby raygun-ruby 158208 jul  1 11:29 raygun-apm-1.0.49-x64-mingw32.gem
+  drwxr-xr-x  5 raygun-ruby raygun-ruby   4096 jul  1 11:30 raygun-apm-1.0.49-x86_64-linux
+  -rw-r--r--  1 raygun-ruby raygun-ruby 186368 jul  1 11:30 raygun-apm-1.0.49-x86_64-linux.gem
+  drwxr-xr-x  5 raygun-ruby raygun-ruby   4096 jul  1 11:29 raygun-apm-1.0.49-x86-linux
+  -rw-r--r--  1 raygun-ruby raygun-ruby 139264 jul  1 11:29 raygun-apm-1.0.49-x86-linux.gem
+  drwxr-xr-x  5 raygun-ruby raygun-ruby   4096 jul  1 11:28 raygun-apm-1.0.49-x86-mingw32
+  -rw-r--r--  1 raygun-ruby raygun-ruby 148480 jul  1 11:28 raygun-apm-1.0.49-x86-mingw32.gem
+
+A mix of directories and also the final fat gems. The gems are the releasable entities and the directories are the unpacked source for each gem respectively.
+Notice the Ruby version specific directories in the Linux build for Rubies 2.5 through 2.7.
+
+  raygun-ruby@CarbonX1:~/src/raygun-apm-ruby$ ls -la pkg/raygun-apm-1.0.49-x86_64-linux/lib/raygun
+  total 148
+  drwxr-xr-x 6 raygun-ruby raygun-ruby   4096 jul  1 11:30 .
+  drwxr-xr-x 3 raygun-ruby raygun-ruby   4096 jul  1 11:30 ..
+  drwxr-xr-x 2 raygun-ruby raygun-ruby   4096 jul  1 11:30 2.5
+  drwxr-xr-x 2 raygun-ruby raygun-ruby   4096 jul  1 11:30 2.6
+  drwxr-xr-x 2 raygun-ruby raygun-ruby   4096 jul  1 11:30 2.7
+  drwxr-xr-x 4 raygun-ruby raygun-ruby   4096 jul  1 11:30 apm
+  -rw-r--r-- 2 raygun-ruby raygun-ruby    385 jul  1 11:30 apm.rb
+  -rwxr-xr-x 2 raygun-ruby raygun-ruby 119704 jul  1 11:30 raygun_ext.so
+
+And in the 2.7 subdirectory we can see the <code>raygun_ext.so</code> 
+
+  raygun-ruby@CarbonX1:~/src/raygun-apm-ruby$ ls -la pkg/raygun-apm-1.0.49-x86_64-linux/lib/raygun/2.7
+  total 104
+  drwxr-xr-x 2 raygun-ruby raygun-ruby  4096 jul  1 11:30 .
+  drwxr-xr-x 6 raygun-ruby raygun-ruby  4096 jul  1 11:30 ..
+  -rwxr-xr-x 2 raygun-ruby raygun-ruby 98192 jul  1 11:30 raygun_ext.so
+
+As a shortcut the following 2 sets of commands can be used (requires and API key and Rubygems.org account as per {this guide}[https://guides.rubygems.org/publishing/]):
+
+* To inspect that the build went well (expecting 4 gems) <code>pushd pkg; for x in $(ls *.gem); do echo $x; done; popd</code>
+* To push the built gems up to Rubygems <code>pushd pkg; for x in $(ls *.gem); do gem push $x; done; popd</code>
+
+=== Building for Darwin
+
+The Darwin build infrastructure is not Docker friendly and in order to build for the the darwin-universal platform, a Mac environment (a Mini is fine) is required. Only
+Mac OS Catalina has been used for builds and this was formalized and has been working well since November 2019.
+
+I've been using {chruby}(https://github.com/postmodern/chruby) in my environment for years, but {rbenv}(https://github.com/rbenv/rbenv) would work just as well.
+
+Instructions here are for chruby. Install {chruby}(https://github.com/postmodern/chruby#homebrew) and {ruby-install}(https://github.com/postmodern/ruby-install#homebrew) with {homebrew}(https://brew.sh/) and then install the supported Ruby versions (the
+<code>--enable-static --enable-install-static-library</code> are very important in order to have the extensions build be statically linked with <code>libruby</code>)
+
+  ruby-install ruby 2.5.5 -- --enable-static --enable-install-static-library
+  ruby-install ruby 2.6.6 -- --enable-static --enable-install-static-library
+  ruby-install ruby 2.7.2 -- --enable-static --enable-install-static-library
+
+These initial compile steps can take several minutes per Ruby version as it's a clean configure and compile process.
+
+To invoke it, we need to execute the <code>bundle exec rake gem:native:darwin</code> task as per:
+
+  raygun-ruby@CarbonX1:~/src/raygun-apm-ruby$ bundle exec rake -T
+  rake build               # Build raygun-apm-1.0.49.gem into the pkg directory
+  rake clean               # Remove any temporary products
+  rake clobber             # Remove any generated files
+  rake clobber_rdoc        # Remove RDoc HTML files
+  rake compile             # Compile all the extensions
+  rake compile:raygun_ext  # Compile raygun_ext
+  rake gem:native          # Compile native gems for distribution (Linux and Windows)
+  rake gem:native:darwin   # Compile native gems for distribution (Darwin) <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+  rake install             # Build and install raygun-apm-1.0.49.gem into system gems
+  rake install:local       # Build and install raygun-apm-1.0.49.gem into system gems without network access
+  rake perf                # Run a suite of performance tests to keep tabs on overhead
+  rake rdoc                # Build RDoc HTML files
+  rake release[remote]     # Create tag v1.0.49 and build and push raygun-apm-1.0.49.gem to rubygems.org
+  rake rerdoc              # Rebuild RDoc HTML files
+  rake test                # Run tests
+  rake valgrind            # Run the test suite with valgrind
+
+Contrary to the Linux and Windows Docke powered build process, this one only produces a single gem in the <code>pkg/</code> folder:
+
+  raygun-ruby:raygun-apm-ruby raygun-ruby$ ls -la pkg
+  total 272
+  drwxr-xr-x   4 raygun-ruby  staff     128 Jul  1 11:23 .
+  drwxr-xr-x  19 raygun-ruby  staff     608 Jul  1 11:23 ..
+  drwxr-xr-x   7 raygun-ruby  staff     224 Jul  1 11:23 raygun-apm-1.0.49-universal-darwin
+  -rw-r--r--   1 raygun-ruby  staff  139264 Jul  1 11:23 raygun-apm-1.0.49-universal-darwin.gem
+
+Poking around in <code>lib</code> in the unpacked gem directory <code>raygun-apm-1.0.49-universal-darwin</code>, you will notice the presence of a <code>raygun_ext.dylib</code>
+under each supported Ruby version's subdirectory. This is the Mac equivalent of a shared object.
+
+To release this particular gem, executve <code>gem push pkg/raygun-apm-1.0.49-universal-darwin.gem</code>. API credentials for Rubygems as per {this guide}[https://guides.rubygems.org/publishing/])
+is required on the Mac host machine too.
+
+== Ruby extensions
+
+We built this profiler in a way that the core wire protocol encoder and other protocol details can easily be linked as a shared object OR vendored in as is for
+other implementations with the contract being a few C structs as integration point. Before getting into the guts of that, a few resources that would be beneficial to
+scan through first. All require a C background, but C++ or variations thereof and an open mind goes a long way too. I personally never learned from official resources
+but via patterns from the Ruby core codebase over the last decade+
+
+* The official Ruby core {extensions}[https://github.com/ruby/ruby/blob/master/doc/extension.rdoc] document
+* This trivial example from {rubygems}[https://guides.rubygems.org/gems-with-extensions/]
+* The {extending ruby}[http://ruby-doc.com/docs/ProgrammingRuby/html/ext_ruby.html] chapter from a date book, but content very much still relevant
+* This {blog}[http://tenderlovemaking.com/2009/12/18/writing-ruby-c-extensions-part-1.html] {series}[http://tenderlovemaking.com/2010/12/11/writing-ruby-c-extensions-part-2.html] which is also dated, but still very relevant
+* A still to release {PR}[https://github.com/Shopify/statsd-instrument/pull/259] that significantly reduces statsd packet building overhead which has some very verbose comments and updates
+* This {blog post}[https://stuart.com/blog/ruby-bindings-extensions/] up until the FFI (Foreign Function Interface) secion
+* This {book}[http://patshaughnessy.net/ruby-under-a-microscope] is also quite good, but I've only poked at parts of it historically. 2012ish, yet still relevant
+
+== Debug builds
+
+The profiler is built by default with pedantic mode, all warnings enabled and with C standard c99.
+
+  raygun-ruby@CarbonX1:~/src/raygun-apm-ruby$ bundle exec rake
+  mkdir -p tmp/x86_64-linux/raygun_ext/2.6.7
+  cd tmp/x86_64-linux/raygun_ext/2.6.7
+  /usr/local/bin/ruby -I. ../../../../ext/raygun/extconf.rb
+  checking for whether -pedantic is accepted as CFLAGS... yes
+  checking for whether -Wall is accepted as CFLAGS... yes
+  checking for whether -Werror=switch is accepted as CFLAGS... yes
+  checking for whether -std=c99 is accepted as CFLAGS... yes
+  checking for whether -O3 is accepted as CFLAGS... yes
+  creating extconf.h
+  checking for ruby.h... yes
+  checking for ruby/debug.h... yes
+  checking for vm_core.h... no
+  checking for ruby.h... yes
+  checking for ruby/debug.h... yes
+  checking for vm_core.h... no
+
+Setting the <code>DEBUG</code> environment variable enables an additional stack guard, protector and also disables all common compiler optimizations (better debug context with <code>gdb</code>).
+This mode is meant for local testing and debugging purposes only as it enables conditional branch checks we don't want in a production profiler.
+
+  raygun-ruby@CarbonX1:~/src/raygun-apm-ruby$ DEBUG=1 bundle exec rake
+  cd tmp/x86_64-linux/raygun_ext/2.6.7
+  /usr/local/bin/ruby -I. ../../../../ext/raygun/extconf.rb
+  checking for whether -pedantic is accepted as CFLAGS... yes
+  checking for whether -Wall is accepted as CFLAGS... yes
+  checking for whether -Werror=switch is accepted as CFLAGS... yes
+  checking for whether -std=c99 is accepted as CFLAGS... yes
+  checking for -lssp... no
+  checking for __stack_chk_guard()... no
+  checking for __stack_chk_fail()... yes
+  checking for whether -ggdb3 is accepted as CFLAGS... yes
+  checking for whether -Og is accepted as CFLAGS... yes
+  checking for whether -fstack-protector-all is accepted as CFLAGS... yes
+  checking for whether -DRB_RG_DEBUG is accepted as CFLAGS... yes
+  creating extconf.h
+  checking for ruby.h... yes
+  checking for ruby/debug.h... yes
+  checking for vm_core.h... no
+  checking for ruby.h... yes
+  checking for ruby/debug.h... yes
+  checking for vm_core.h... no
+
+This mode also defines <code>RB_RG_DEBUG</code> which conditionally compiles debug specific code blocks such as log statements and runtime asserts.
+
+A debug build has special semantics at runtime when the following environment variables are set (in the same shell as the Rails server being started). The log stream is to <code>STDOUT</code> for all
+
+
+* <code>PROTON_DEBUG_LOGLEVEL=None</code> - noop effectively, but still has runtime overhead for the branch checks
+* <code>PROTON_DEBUG_LOGLEVEL=Info</code> - useful but {non-exhaustive information}[https://github.com/MindscapeHQ/raygun-apm-ruby/blob/master/artifacts/debug_level_info.txt], mostly around scoping of transactions, threads and extended events
+* <code>PROTON_DEBUG_LOGLEVEL=Warning</code> - at the moment only warnings about deliberate jitter introduced in the UDP sink if emission rate is very high in order to lower the possibility of drops
+* <code>PROTON_DEBUG_LOGLEVEL=Error</code> - an explicit error message is logged with every <code>Raygun::Apm::FatalError</code> raised which has a default action to shut the profiler down but may not always emit to the log stream as well
+* <code>PROTON_DEBUG_LOGLEVEL=Verbose</code> - a {very verbose output}[https://github.com/MindscapeHQ/raygun-apm-ruby/blob/master/artifacts/debug_level_verbose.txt] related to wire protocol commands
+* <code>PROTON_DEBUG_LOGLEVEL=Debug</code> - the {maxium level}[https://github.com/MindscapeHQ/raygun-apm-ruby/blob/master/artifacts/debug_level_debug.txt] of verbosity (and the same as level <code>Everything</code>) and also includes insights into the UDP dispatcher thread, for example:
+* <code>PROTON_DEBUG_LOGLEVEL=Blacklist</code> - a {log level}[https://github.com/MindscapeHQ/raygun-apm-ruby/blob/master/artifacts/debug_level_blacklist.txt] specific to the Ruby profiler that dumps out blacklist specific behaviour which is helpful to debug spurious methods observed in traces
+
+== Stress tests implemented
+
+=== Profiler and host application
+
+We introduce a mode for both the Rails and Sidekiq integration where every unit of work (web request or job) can be submitted to extreme GC pressure with a forced major GC after every object allocation by setting envrinment variable <code>RAYGUN_STRESS_GC=1</code>. This runs extremely slow, but is
+very useful for ironing out non-deterministic GC issues by covering both the profiler and host application.
+
+  raygun-ruby@CarbonX1:~/src/redmine$ RAYGUN_STRESS_GC=1 bundle exec rails s
+  => Booting Puma
+  => Rails 5.2.4.1 application starting in development
+  => Run `rails server -h` for more startup options
+  Rack::File is deprecated, please use Rack::Files instead.
+  Puma starting in single mode...
+  * Version 4.3.1 (ruby 2.6.7-p147), codename: Mysterious Traveller
+  * Min threads: 0, max threads: 16
+  * Environment: development
+  * Listening on tcp://127.0.0.1:3000
+  * Listening on tcp://[::1]:3000
+  Use Ctrl-C to stop
+  Started GET "/" for ::1 at 2020-07-12 19:46:57 +0100
+  The Raygun APM Agent appears to not be running on the current host.
+  If not already installed, please consult https://raygun.com/documentation/product-guides/apm/agent/downloads/
+  Otherwise refer to https://raygun.com/documentation/product-guides/apm/agent/installation/ for starting the Agent.
+
+Go grab a coffee.
+
+=== Profiler test suite
+
+The test suite also has a GC stress mode, enabled by setting the following environment variable <code>STRESS_GC=1</code>
+
+  raygun-ruby@CarbonX1:~/src/raygun-apm-ruby$ STRESS_GC=1 bundle exec rake
+  install -c tmp/x86_64-linux/raygun_ext/2.6.7/raygun_ext.so lib/raygun/raygun_ext.so
+  cp tmp/x86_64-linux/raygun_ext/2.6.7/raygun_ext.so tmp/x86_64-linux/stage/lib/raygun/raygun_ext.so
+  /home/raygun-ruby/src/raygun-apm-ruby/lib/raygun/apm/blacklist/parser.rb:27: warning: `*' interpreted as argument prefix
+  /home/raygun-ruby/src/raygun-apm-ruby/lib/raygun/apm/blacklist/parser.rb:29: warning: `*' interpreted as argument prefix
+  /home/raygun-ruby/src/raygun-apm-ruby/lib/raygun/apm/blacklist/parser.rb:31: warning: `*' interpreted as argument prefix
+  /home/raygun-ruby/src/raygun-apm-ruby/test/raygun/apm_thread_inheritance_test.rb:6: warning: assigned but unused variable - exception_id
+  /home/raygun-ruby/src/raygun-apm-ruby/test/raygun/apm_thread_inheritance_test.rb:7: warning: assigned but unused variable - exception_correlation_id
+  /home/raygun-ruby/src/raygun-apm-ruby/test/raygun/http_out_test.rb:74: warning: assigned but unused variable - res
+  /usr/local/lib/ruby/gems/2.6.0/gems/httpclient-2.8.3/lib/httpclient/ssl_config.rb:370: warning: assigned but unused variable - pathlen
+  /usr/local/lib/ruby/gems/2.6.0/gems/httpclient-2.8.3/lib/httpclient/ssl_config.rb:51: warning: method redefined; discarding old initialize
+  /usr/local/lib/ruby/gems/2.6.0/gems/httpclient-2.8.3/lib/httpclient/ssl_config.rb:58: warning: method redefined; discarding old add_cert
+  /usr/local/lib/ruby/gems/2.6.0/gems/httpclient-2.8.3/lib/httpclient/ssl_config.rb:58: warning: method redefined; discarding old add_file
+  /usr/local/lib/ruby/gems/2.6.0/gems/httpclient-2.8.3/lib/httpclient/ssl_config.rb:58: warning: method redefined; discarding old add_path
+  /home/raygun-ruby/src/raygun-apm-ruby/test/raygun/ringbuf_test.rb:63: warning: assigned but unused variable - ringbuf
+  /home/raygun-ruby/src/raygun-apm-ruby/test/raygun/shutdown_stress_test.rb:26: warning: assigned but unused variable - e
+  Run options: -v --seed 56517
+
+  # Running:
+
+  GC stress with Proc / callback sink#test_tracer_started_gc_stress =
+
+Get some more coffee :-)
+
+We also cover thread safety tests, especially with concurrent threads and produced events and their offsets into the output buffers by setting the <code>STRESS_THREADS=1</code> environment variable
+
+  raygun-ruby@CarbonX1:~/src/raygun-apm-ruby$ STRESS_THREADS=1 bundle exec rake
+  install -c tmp/x86_64-linux/raygun_ext/2.6.7/raygun_ext.so lib/raygun/raygun_ext.so
+  cp tmp/x86_64-linux/raygun_ext/2.6.7/raygun_ext.so tmp/x86_64-linux/stage/lib/raygun/raygun_ext.so
+  /home/raygun-ruby/src/raygun-apm-ruby/lib/raygun/apm/blacklist/parser.rb:27: warning: `*' interpreted as argument prefix
+  /home/raygun-ruby/src/raygun-apm-ruby/lib/raygun/apm/blacklist/parser.rb:29: warning: `*' interpreted as argument prefix
+  /home/raygun-ruby/src/raygun-apm-ruby/lib/raygun/apm/blacklist/parser.rb:31: warning: `*' interpreted as argument prefix
+  /home/raygun-ruby/src/raygun-apm-ruby/test/raygun/apm_thread_inheritance_test.rb:6: warning: assigned but unused variable - exception_id
+  /home/raygun-ruby/src/raygun-apm-ruby/test/raygun/apm_thread_inheritance_test.rb:7: warning: assigned but unused variable - exception_correlation_id
+  /home/raygun-ruby/src/raygun-apm-ruby/test/raygun/http_out_test.rb:74: warning: assigned but unused variable - res
+  /usr/local/lib/ruby/gems/2.6.0/gems/httpclient-2.8.3/lib/httpclient/ssl_config.rb:370: warning: assigned but unused variable - pathlen
+  /usr/local/lib/ruby/gems/2.6.0/gems/httpclient-2.8.3/lib/httpclient/ssl_config.rb:51: warning: method redefined; discarding old initialize
+  /usr/local/lib/ruby/gems/2.6.0/gems/httpclient-2.8.3/lib/httpclient/ssl_config.rb:58: warning: method redefined; discarding old add_cert
+  /usr/local/lib/ruby/gems/2.6.0/gems/httpclient-2.8.3/lib/httpclient/ssl_config.rb:58: warning: method redefined; discarding old add_file
+  /usr/local/lib/ruby/gems/2.6.0/gems/httpclient-2.8.3/lib/httpclient/ssl_config.rb:58: warning: method redefined; discarding old add_path
+  /home/raygun-ruby/src/raygun-apm-ruby/test/raygun/ringbuf_test.rb:63: warning: assigned but unused variable - ringbuf
+  /home/raygun-ruby/src/raygun-apm-ruby/test/raygun/shutdown_stress_test.rb:26: warning: assigned but unused variable - e
+  Run options: -v --seed 42943
+
+  # Running:
+
+  context#test_buffer_thread_safety_check_by_event_size = The Raygun APM Agent is configured properly!
+  0.62 s = .
+
+And last but not least, spinup and shutdown stress of the profiler core in various processes (50 distinct process IDs) with variable loops through the tracer:
+
+  raygun-ruby@CarbonX1:~/src/raygun-apm-ruby$ STRESS_SHUTDOWN=1 bundle exec rake
+  install -c tmp/x86_64-linux/raygun_ext/2.6.7/raygun_ext.so lib/raygun/raygun_ext.so
+  cp tmp/x86_64-linux/raygun_ext/2.6.7/raygun_ext.so tmp/x86_64-linux/stage/lib/raygun/raygun_ext.so
+  /home/raygun-ruby/src/raygun-apm-ruby/lib/raygun/apm/blacklist/parser.rb:27: warning: `*' interpreted as argument prefix
+  /home/raygun-ruby/src/raygun-apm-ruby/lib/raygun/apm/blacklist/parser.rb:29: warning: `*' interpreted as argument prefix
+  /home/raygun-ruby/src/raygun-apm-ruby/lib/raygun/apm/blacklist/parser.rb:31: warning: `*' interpreted as argument prefix
+  /home/raygun-ruby/src/raygun-apm-ruby/test/raygun/apm_thread_inheritance_test.rb:6: warning: assigned but unused variable - exception_id
+  /home/raygun-ruby/src/raygun-apm-ruby/test/raygun/apm_thread_inheritance_test.rb:7: warning: assigned but unused variable - exception_correlation_id
+  /home/raygun-ruby/src/raygun-apm-ruby/test/raygun/http_out_test.rb:74: warning: assigned but unused variable - res
+  /usr/local/lib/ruby/gems/2.6.0/gems/httpclient-2.8.3/lib/httpclient/ssl_config.rb:370: warning: assigned but unused variable - pathlen
+  /usr/local/lib/ruby/gems/2.6.0/gems/httpclient-2.8.3/lib/httpclient/ssl_config.rb:51: warning: method redefined; discarding old initialize
+  /usr/local/lib/ruby/gems/2.6.0/gems/httpclient-2.8.3/lib/httpclient/ssl_config.rb:58: warning: method redefined; discarding old add_cert
+  /usr/local/lib/ruby/gems/2.6.0/gems/httpclient-2.8.3/lib/httpclient/ssl_config.rb:58: warning: method redefined; discarding old add_file
+  /usr/local/lib/ruby/gems/2.6.0/gems/httpclient-2.8.3/lib/httpclient/ssl_config.rb:58: warning: method redefined; discarding old add_path
+  /home/raygun-ruby/src/raygun-apm-ruby/test/raygun/ringbuf_test.rb:63: warning: assigned but unused variable - ringbuf
+  /home/raygun-ruby/src/raygun-apm-ruby/test/raygun/shutdown_stress_test.rb:26: warning: assigned but unused variable - e
+  Run options: -v --seed 61752
+
+  # Running:
+
+  Raygun::EventTest#test_end_encoded = 0.00 s = .
+  Raygun::EventTest#test_http_incoming_information_getters_setters = 0.00 s = .
+  Raygun::EventTest#test_sql_encoded = 0.00 s = .
+  Raygun::EventTest#test_process_ended_encoded = 0.00 s = .
+  Raygun::EventTest#test_end_setters_getters = 0.00 s = .
+  Raygun::EventTest#test_methodinfo_setters_getters = 0.00 s = .
+  Raygun::EventTest#test_process_frequency_encoded = 0.00 s = .
+  Raygun::EventTest#test_sql_massive_query = 0.00 s = .
+  Raygun::EventTest#test_begin_transaction_encoded = 0.00 s = .
+  Raygun::EventTest#test_end_encoded_numeric_types = 0.00 s = .
+  Raygun::EventTest#test_begin_setters_getters = 0.00 s = .
+  Raygun::EventTest#test_end_transaction_encoded = 0.00 s = .
+  Raygun::EventTest#test_http_incoming_information_encoded = 0.00 s = .
+  Raygun::EventTest#test_http_outgoing_information_encoded = 0.00 s = .
+  Raygun::EventTest#test_exception_thrown_encoded = 0.00 s = .
+  Raygun::EventTest#test_process_ended_setters_getters = 0.00 s = .
+  Raygun::EventTest#test_process_type_getters_setters = 0.00 s = .
+  Raygun::EventTest#test_methodinfo_encoded = 0.00 s = .
+  Raygun::EventTest#test_process_frequency_setters_getters = 0.00 s = .
+  Raygun::EventTest#test_exception_thrown_setters_getters = 0.00 s = .
+  Raygun::EventTest#test_thread_started_encoded = 0.00 s = .
+  Raygun::EventTest#test_begin_encoded = 0.00 s = .
+  Raygun::EventTest#test_begin_transaction_with_process_and_technology_type_encoded = 0.00 s = .
+  Raygun::EventTest#test_event_invalid_keys = 0.00 s = .
+  Raygun::EventTest#test_thread_ended_setters_getters = 0.00 s = .
+  Raygun::EventTest#test_sql_getters_setters = 0.00 s = .
+  Raygun::EventTest#test_begin_transaction_with_api_key_encoded = 0.00 s = .
+  Raygun::EventTest#test_process_type_encoded = 0.00 s = .
+  Raygun::EventTest#test_thread_started_setters_getters = 0.00 s = .
+  Raygun::EventTest#test_sql_really_massive_query = 0.00 s = .
+  Raygun::EventTest#test_thread_ended_encoded = 0.00 s = .
+  Raygun::EventTest#test_http_incoming_information_oversized_short_string = 0.00 s = .
+  Raygun::EventTest#test_http_outgoing_information_getters_setters = 0.00 s = .
+  Raygun::TranslateTest#test_ruby_syntax_translator = 0.00 s = .
+  Raygun::TranslateTest#test_dotnet_syntax_translator = 0.00 s = .
+  Shutdown stress with UDP sink#test_tracer_stop_start_shutdown_stress = The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  The Raygun APM Agent is configured properly!
+  "Kill PID 580073 after 1 seconds"
+  "Kill PID 580145 after 1 seconds"
+  "Interrupted shutdown for PID 580073 iterations: 296770509 iterated: 48"
+  "Interrupted shutdown for PID 580145 iterations: 9315721642 iterated: 32"
+  "Kill PID 580137 after 3 seconds"
+  "Interrupted shutdown for PID 580137 iterations: 2370842983 iterated: 117"
+  "Kill PID 580040 after 5 seconds"
+  "Interrupted shutdown for PID 580040 iterations: 2627532739 iterated: 283"
+  "Kill PID 580078 after 7 seconds"
+  "Kill PID 580187 after 7 seconds"
+  "Interrupted shutdown for PID 580078 iterations: 6831640347 iterated: 330"
+  "Interrupted shutdown for PID 580187 iterations: 4820147437 iterated: 311"
+  "Kill PID 580072 after 8 seconds"
+  "Kill PID 580149 after 8 seconds"
+  "Kill PID 580166 after 8 seconds"
+  "Interrupted shutdown for PID 580072 iterations: 917575328 iterated: 404"
+  "Interrupted shutdown for PID 580149 iterations: 3586514679 iterated: 371"
+  "Interrupted shutdown for PID 580166 iterations: 5013075266 iterated: 394"
+  "Kill PID 580042 after 11 seconds"
+  "Interrupted shutdown for PID 580042 iterations: 2937996405 iterated: 589"
+  "Kill PID 580131 after 12 seconds"
+  "Interrupted shutdown for PID 580131 iterations: 981743917 iterated: 622"
+  "Kill PID 580090 after 17 seconds"
+  "Kill PID 580150 after 17 seconds"
+  "Interrupted shutdown for PID 580090 iterations: 9702396174 iterated: 894"
+  "Interrupted shutdown for PID 580150 iterations: 8507298781 iterated: 952"
+  "Kill PID 580123 after 19 seconds"
+  "Interrupted shutdown for PID 580123 iterations: 3041293389 iterated: 1088"
+  "Kill PID 580083 after 20 seconds"
+  "Interrupted shutdown for PID 580083 iterations: 4497901443 iterated: 1185"
+  "Kill PID 580105 after 22 seconds"
+  "Interrupted shutdown for PID 580105 iterations: 7643959435 iterated: 1222"
+  "Kill PID 580064 after 26 seconds"
+  "Interrupted shutdown for PID 580064 iterations: 1243286084 iterated: 1536"
+  "Kill PID 580152 after 27 seconds"
+  "Interrupted shutdown for PID 580152 iterations: 3259653794 iterated: 1503"
+  "Kill PID 580051 after 28 seconds"
+  "Interrupted shutdown for PID 580051 iterations: 1059693060 iterated: 1745"
+  "Kill PID 580143 after 29 seconds"
+  "Interrupted shutdown for PID 580143 iterations: 1856705687 iterated: 1692"
+  "Kill PID 580115 after 31 seconds"
+  "Kill PID 580122 after 31 seconds"
+  "Interrupted shutdown for PID 580122 iterations: 2884484 iterated: 2001"
+  "Interrupted shutdown for PID 580115 iterations: 1659390251 iterated: 1963"
+  "Kill PID 580080 after 32 seconds"
+  "Interrupted shutdown for PID 580080 iterations: 775761832 iterated: 1967"
+  "Kill PID 580084 after 32 seconds"
+  "Interrupted shutdown for PID 580084 iterations: 487870488 iterated: 2020"
+  "Kill PID 580047 after 33 seconds"
+  "Interrupted shutdown for PID 580047 iterations: 2709874691 iterated: 2206"
+  "Kill PID 580050 after 34 seconds"
+  "Interrupted shutdown for PID 580050 iterations: 2833034549 iterated: 2248"
+  "Kill PID 580046 after 35 seconds"
+  "Kill PID 580074 after 35 seconds"
+  "Interrupted shutdown for PID 580046 iterations: 793195182 iterated: 2451""Interrupted shutdown for PID 580074 iterations: 7709872457 iterated: 2368"
+
+== Performance testing
+
+A small non-exhaustive but relevant micro benchmark performance testing suite that lives in <code>test/perf/*</code> as <code>YAML</code> files  implemented with {benchmark-driver}[https://github.com/benchmark-driver/benchmark-driver] can be run like this:
+
+  raygun-ruby@CarbonX1:~/src/raygun-apm-ruby$ bundle exec rake perf
+  install -c tmp/x86_64-linux/raygun_ext/2.6.7/raygun_ext.so lib/raygun/raygun_ext.so
+  cp tmp/x86_64-linux/raygun_ext/2.6.7/raygun_ext.so tmp/x86_64-linux/stage/lib/raygun/raygun_ext.so
+  benchmark-driver -v -r ips --repeat-result median --bundler test/perf/simple*.yml
+  2.6.7: ruby 2.6.7p147 (2020-03-31 revision 67883) [x86_64-linux]
+  Calculating -------------------------------------
+                    simple_call    77.820M i/s -      1.500M times in 0.019275s (12.85ns/i, 46clocks/i)
+            simple_call_one_arg    27.184M i/s -      1.500M times in 0.055180s (36.79ns/i, 125clocks/i)
+      simple_call_one_arg_traced     4.184M i/s -      1.500M times in 0.358517s (239.01ns/i, 796clocks/i)
+              simple_call_traced     4.752M i/s -      1.500M times in 0.315632s (210.42ns/i, 710clocks/i)
+  simple_call_traced_blacklisted     8.488M i/s -      1.500M times in 0.176716s (117.81ns/i, 393clocks/i)
+
+  Comparison:
+                    simple_call:  77820220.4 i/s 
+            simple_call_one_arg:  27183922.8 i/s - 2.86x  slower
+  simple_call_traced_blacklisted:   8488180.7 i/s - 9.17x  slower
+              simple_call_traced:   4752364.5 i/s - 16.38x  slower
+      simple_call_one_arg_traced:   4183897.2 i/s - 18.60x  slower
+
+  benchmark-driver -v -r time --repeat-result median --bundler test/perf/simple*.yml
+  2.6.7: ruby 2.6.7p147 (2020-03-31 revision 67883) [x86_64-linux]
+  Calculating -------------------------------------
+                    simple_call      0.029 s -      1.500M times in 0.028668s (19.11ns/i, 66clocks/i)
+            simple_call_one_arg      0.062 s -      1.500M times in 0.062282s (41.52ns/i, 142clocks/i)
+      simple_call_one_arg_traced      0.371 s -      1.500M times in 0.371221s (247.48ns/i, 834clocks/i)
+              simple_call_traced      0.310 s -      1.500M times in 0.309910s (206.61ns/i, 683clocks/i)
+  simple_call_traced_blacklisted      0.170 s -      1.500M times in 0.170005s (113.34ns/i, 388clocks/i)
+
+  Comparison:
+                    simple_call:         0.0 s 
+            simple_call_one_arg:         0.1 s - 2.17x  slower
+  simple_call_traced_blacklisted:         0.2 s - 5.93x  slower
+              simple_call_traced:         0.3 s - 10.81x  slower
+      simple_call_one_arg_traced:         0.4 s - 12.95x  slower
+
+  benchmark-driver -v -r memory  --bundler test/perf/simple*.yml
+  2.6.7: ruby 2.6.7p147 (2020-03-31 revision 67883) [x86_64-linux]
+  Calculating -------------------------------------
+                    simple_call    41.000M bytes -      1.500M times
+            simple_call_one_arg    41.316M bytes -      1.500M times
+      simple_call_one_arg_traced    41.784M bytes -      1.500M times
+              simple_call_traced    41.484M bytes -      1.500M times
+  simple_call_traced_blacklisted    41.548M bytes -      1.500M times
+
+  Comparison:
+                    simple_call:  41000000.0 bytes 
+            simple_call_one_arg:  41316000.0 bytes - 1.01x  larger
+              simple_call_traced:  41484000.0 bytes - 1.01x  larger
+  simple_call_traced_blacklisted:  41548000.0 bytes - 1.01x  larger
+      simple_call_one_arg_traced:  41784000.0 bytes - 1.02x  larger 
+
+It measures wall time and memory overhead with the last 2 tranches out output being most relevant.
+
+== GC guards
+
+You may notice the `RB_GC_GUARD` macros sprinkled in the profiler source code. It allows C extension authors to provide a hint to the compiler to not optimize out
+any references important for the mark and sweep GC to follow during a GC cycle otherwise they would be prematurely freed.
+
+References:
+
+* https://github.com/ruby/ruby/blob/master/doc/extension.rdoc#appendix-e-rb_gc_guard-to-protect-from-premature-gc-
+* https://github.com/ruby/ruby/blob/c6c241e49c35a2bf0079499459f60f470f97395a/include/ruby/internal/memory.h#L91-L102
+
+Any future changes with `VALUE`s (pointers to Ruby heap objects) wrapped in `RB_GC_GUARD` macros should be followed by the following tests:
+
+* Run the profiler test suite with `STRESS_GC=1` set in the environment
+* Start a Rails test app with `RAYGUN_GC_STRESS=1` set and trigger a request
+
+Both of these environment variables enable [GC.stress](https://ruby-doc.org/core-2.7.1/GC.html#method-c-stress-3D) which ensures we have maximum coverage of GC interactions with the profiler. Go make some coffee :-)
+
+
+== Memory corruption debugging exercise (Linux only)
+
+This is a resurrection from a previous (and the last) core dump we got out of the profiler that was fixed in https://github.com/MindscapeHQ/raygun-apm-ruby/pull/201
+
+Requirements:
+
+* Install {GDB}[https://www.gnu.org/software/gdb/] - `sudo apt-get install gdb`
+* OPTIONAL, here is a great {resource}[https://www.sourceware.org/gdb/current/onlinedocs/gdb.html]
+* Have a quick scan through {coredumpctl}[http://manpages.ubuntu.com/manpages/bionic/man1/coredumpctl.1.html] (used to load up core dumps in Ubuntu / Debian environments)
+
+This is the main Linux debugger tool and also useful for loading core (memory / heap) dumps as well as debug a running program with breakpoints. I don't normally use
+a debugger for any purpose other than getting callsite information from a segfault, but this exercise also requires looking deeper into specific stack frames to find
+the root cause.
+
+Caveats and disclaimers:
+
+* Does not work from within Docker containers without granting significantly privileges and capabilities. eg. `--cap-add=SYS_PTRACE --security-opt seccomp=unconfined` as per this {outline}[https://leimao.github.io/blog/Debug-CPP-In-Docker-Container/]
+* It's not recommended to run such configurations at all in production
+* Thus a raw Linux VM is recommended for this session, although a once off image run with `--cap-add=SYS_PTRACE --security-opt seccomp=unconfined` could work as well
+
+Affected functions in this drill:
+
+* `rb_rg_encode_string`
+* `rb_rg_encode_short_strings`
+
+To trigger the bug:
+
+* `bundle exec rake` (there was a regression test added to the suite to ensure this doesn't recur) would trigger a core dump, like this:
+
+```
+Raygun::EventTest#test_sql_really_massive_query = /home/raygun-ruby/src/raygun-apm-ruby/test/raygun/event_test.rb:312: [BUG] Segmentation fault at 0x0000562088fef000
+ruby 2.6.7p147 (2020-03-31 revision 67883) [x86_64-linux]
+
+-- Control frame information -----------------------------------------------
+c:0024 p:---- s:0131 e:000130 CFUNC  :[]=
+c:0023 p:0091 s:0125 e:000124 METHOD /home/raygun-ruby/src/raygun-apm-ruby/test/raygun/event_test.rb:312
+c:0022 p:0024 s:0120 e:000119 BLOCK  /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest/test.rb:98
+c:0021 p:0002 s:0117 e:000116 METHOD /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest/test.rb:195
+c:0020 p:0006 s:0112 e:000111 BLOCK  /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest/test.rb:95
+c:0019 p:0014 s:0109 e:000108 METHOD /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:270
+c:0018 p:0006 s:0104 e:000103 BLOCK  /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest/test.rb:94
+c:0017 p:0030 s:0101 e:000100 METHOD /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:365
+c:0016 p:0046 s:0093 E:001688 METHOD /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest/test.rb:211
+c:0015 p:0005 s:0086 E:000740 METHOD /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest/test.rb:93
+c:0014 p:0010 s:0082 e:000081 METHOD /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:1029
+c:0013 p:0026 s:0075 e:000073 METHOD /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:339
+c:0012 p:0011 s:0067 e:000066 BLOCK  /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:326 [FINISH]
+c:0011 p:---- s:0063 e:000062 CFUNC  :each
+c:0010 p:0007 s:0059 e:000058 BLOCK  /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:325
+c:0009 p:0030 s:0056 e:000055 METHOD /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:365
+c:0008 p:0031 s:0048 E:0013f8 METHOD /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:352
+c:0007 p:0125 s:0041 E:0019e8 METHOD /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:324
+c:0006 p:0010 s:0032 e:000031 BLOCK  /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:164 [FINISH]
+c:0005 p:---- s:0028 e:000027 CFUNC  :map
+c:0004 p:0040 s:0024 e:000023 METHOD /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:164
+c:0003 p:0154 s:0015 e:000014 METHOD /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:141
+c:0002 p:0072 s:0008 E:000d70 BLOCK  /usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:68 [FINISH]
+c:0001 p:0000 s:0003 E:002050 (none) [FINISH]
+
+-- Ruby level backtrace information ----------------------------------------
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:68:in `block in autorun'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:141:in `run'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:164:in `__run'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:164:in `map'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:164:in `block in __run'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:324:in `run'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:352:in `with_info_handler'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:365:in `on_signal'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:325:in `block in run'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:325:in `each'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:326:in `block (2 levels) in run'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:339:in `run_one_method'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:1029:in `run_one_method'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest/test.rb:93:in `run'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest/test.rb:211:in `with_info_handler'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:365:in `on_signal'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest/test.rb:94:in `block in run'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest.rb:270:in `time_it'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest/test.rb:95:in `block (2 levels) in run'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest/test.rb:195:in `capture_exceptions'
+/usr/local/lib/ruby/gems/2.6.0/gems/minitest-5.13.0/lib/minitest/test.rb:98:in `block (3 levels) in run'
+/home/raygun-ruby/src/raygun-apm-ruby/test/raygun/event_test.rb:312:in `test_sql_really_massive_query'
+/home/raygun-ruby/src/raygun-apm-ruby/test/raygun/event_test.rb:312:in `[]='
+
+-- Machine register context ------------------------------------------------
+ RIP: 0x00007f99e9c34886 RBP: 0xffffffffffff9c40 RSP: 0x00007ffd28898f00
+ RAX: 0x0000000000000000 RBX: 0x0000562088fdd8b4 RCX: 0x1fffffffffffd2a2
+ RDX: 0x0000000000522005 RDI: 0x0000562088fedfe8 RSI: 0x0000562088fef000
+  R8: 0x0000000000000001  R9: 0x0000562082dd0130 R10: 0x0000000000000002
+ R11: 0x0000562088fe08b0 R12: 0x00007ffd28898f18 R13: 0x00005620839ca848
+ R14: 0x0000000000000002 R15: 0x0000562083d6d748 EFL: 0x0000000000010a06
+
+-- C level backtrace information -------------------------------------------
+ruby: malloc.c:2379: sysmalloc: Assertion `(old_top == initial_top (av) && old_size == 0) || ((unsigned long) (old_size) >= MINSIZE && prev_inuse (old_top) && ((unsigned long) old_end & (pagesize - 1)) == 0)' failed.
+Aborted (core dumped)
+```
+
+A couple of things about this backtrace:
+
+* It's the Ruby's default bug handler on core dump and thus has the distinct sections: Ruby frames, a Ruby backtrace, machine register values and also a C level backtrace (this is usually longer, malloc specific ones tend to be short)
+* `c:0024 p:---- s:0131 e:000130 CFUNC  :[]=` means field assignment (`:[]=`) in context of a C function (not written in native Ruby, `CFUNC`)
+* Second clue is that it references the events wrapper most likely as that interface supports field assignment and the test filename `event_test.rb` also points to that `c:0023 p:0091 s:0125 e:000124 METHOD /home/raygun-ruby/src/raygun-apm-ruby/test/raygun/event_test.rb:312`
+
+Load the dump in gdb:
+
+`coredumpctl gdb` loads up the last core dump known by the system - if you have so many that this loads up the wrong one, there's bigger problems :-)
+
+```
+raygun-ruby@CarbonX1:~/src/raygun-apm-ruby$ coredumpctl gdb
+           PID: 178751 (ruby)
+           UID: 1000 (raygun-ruby)
+           GID: 1000 (raygun-ruby)
+        Signal: 6 (ABRT)
+     Timestamp: Wed 2020-08-26 10:25:21 WEST (6h ago)
+  Command Line: /usr/local/bin/ruby -w -Ilib:test:lib -I/usr/local/lib/ruby/gems/2.6.0/gems/rake-12.3.3/lib /usr/local/lib/ruby/gems/2.6.0/gems/rake-12.3.3/lib/rake/rake_test_loader.rb test/raygun/apm_gc_stress_test.rb test/raygun/apm_test.rb test/raygun/apm_thread_inheritance_test.rb test/raygun/apm_thread_safety_test.rb test/raygun/event_test.rb test/raygun/http_out_test.rb test/raygun/optional_compile_time_test.rb test/raygun/ringbuf_test.rb test/raygun/shutdown_stress_test.rb test/raygun/translate_test.rb -v
+    Executable: /usr/local/bin/ruby
+ Control Group: /user.slice/user-1000.slice/user@1000.service/apps.slice/apps-org.gnome.Terminal.slice/vte-spawn-30c907c5-ca11-405e-b9ee-6188ee97b8bb.scope
+          Unit: user@1000.service
+     User Unit: vte-spawn-30c907c5-ca11-405e-b9ee-6188ee97b8bb.scope
+         Slice: user-1000.slice
+     Owner UID: 1000 (raygun-ruby)
+       Boot ID: e9e8f5e0d9a74847af0e2e9a3650bbc1
+    Machine ID: 2cd6fa176b9d4b6db9c0f5f2c6b5130d
+      Hostname: CarbonX1
+       Storage: /var/lib/systemd/coredump/core.ruby.1000.e9e8f5e0d9a74847af0e2e9a3650bbc1.178751.1598433921000000000000.lz4
+       Message: Process 178751 (ruby) of user 1000 dumped core.
+                
+                Stack trace of thread 178751:
+                #0  0x00007f99ec37518b __GI_raise (libc.so.6 + 0x4618b)
+                #1  0x00007f99ec354859 __GI_abort (libc.so.6 + 0x25859)
+                #2  0x00007f99ec3c745a __malloc_assert (libc.so.6 + 0x9845a)
+                #3  0x00007f99ec3c9abf sysmalloc (libc.so.6 + 0x9aabf)
+                #4  0x00007f99ec3ca913 _int_malloc (libc.so.6 + 0x9b913)
+                #5  0x00007f99ec3cc419 __GI___libc_malloc (libc.so.6 + 0x9d419)
+                #6  0x0000562081a6f72a uncompress_debug_section (ruby + 0x28a72a)
+                #7  0x0000562081a6fd5d rb_dump_backtrace_with_lines (ruby + 0x28ad5d)
+                #8  0x0000562081a6abb6 rb_print_backtrace (ruby + 0x285bb6)
+                #9  0x0000562081a60e7d rb_bug_context (ruby + 0x27be7d)
+                #10 0x000056208192d016 sigsegv (ruby + 0x148016)
+                #11 0x00007f99ec7573c0 __restore_rt (libpthread.so.0 + 0x153c0)
+                #12 0x00007f99e9c34886 n/a (/home/raygun-ruby/src/raygun-apm-ruby/lib/raygun/raygun_ext.so + 0xb886)
+
+GNU gdb (Ubuntu 9.1-0ubuntu1) 9.1
+Copyright (C) 2020 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+Type "show copying" and "show warranty" for details.
+This GDB was configured as "x86_64-linux-gnu".
+Type "show configuration" for configuration details.
+For bug reporting instructions, please see:
+<http://www.gnu.org/software/gdb/bugs/>.
+Find the GDB manual and other documentation resources online at:
+    <http://www.gnu.org/software/gdb/documentation/>.
+
+For help, type "help".
+Type "apropos word" to search for commands related to "word"...
+Reading symbols from /usr/local/bin/ruby...
+[New LWP 178751]
+[New LWP 178755]
+[New LWP 178754]
+[New LWP 178767]
+[New LWP 178760]
+[New LWP 178753]
+[New LWP 178788]
+[New LWP 178769]
+[New LWP 178763]
+[New LWP 178761]
+[New LWP 178768]
+[New LWP 178791]
+[New LWP 178766]
+[New LWP 178774]
+[New LWP 178789]
+[New LWP 178771]
+[New LWP 178762]
+[New LWP 178776]
+[New LWP 178797]
+[New LWP 178770]
+[New LWP 178777]
+[New LWP 178782]
+[New LWP 178764]
+[New LWP 178778]
+[New LWP 178780]
+[New LWP 178779]
+[New LWP 178781]
+[New LWP 178787]
+[New LWP 178783]
+[New LWP 178785]
+[New LWP 178792]
+[New LWP 178790]
+[New LWP 178765]
+[New LWP 178772]
+[New LWP 178773]
+[New LWP 178798]
+[New LWP 178775]
+[New LWP 178793]
+
+warning: Unexpected size of section `.reg-xstate/178751' in core file.
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/x86_64-linux-gnu/libthread_db.so.1".
+--Type <RET> for more, q to quit, c to continue without paging--
+Core was generated by `/usr/local/bin/ruby -w -Ilib:test:lib -I/usr/local/lib/ruby/gems/2.6.0/gems/rak'.
+Program terminated with signal SIGABRT, Aborted.
+
+warning: Unexpected size of section `.reg-xstate/178751' in core file.
+#0  __GI_raise (sig=sig@entry=6) at ../sysdeps/unix/sysv/linux/raise.c:50
+50	../sysdeps/unix/sysv/linux/raise.c: No such file or directory.
+[Current thread is 1 (Thread 0x7f99ec32db80 (LWP 178751))]
+```
+
+We verify it's the correct process:
+
+Looks like Ruby to me (PID correlation otherwise may be required):
+
+```
+raygun-ruby@CarbonX1:~/src/raygun-apm-ruby$ coredumpctl gdb
+           PID: 178751 (ruby)
+           UID: 1000 (raygun-ruby)
+           GID: 1000 (raygun-ruby)
+        Signal: 6 (ABRT)
+     Timestamp: Wed 2020-08-26 10:25:21 WEST (6h ago)
+  Command Line: /usr/local/bin/ruby -w -Ilib:test:lib -I/usr/local/lib/ruby/gems/2.6.0/gems/rake-12.3.3/lib /usr/local/lib/ruby/gems/2.6.0/gems/rake-12.3.3/lib/rake/rake_test_loader.rb test/raygun/apm_gc_stress_test.rb test/raygun/apm_test.rb test/raygun/apm_thread_inheritance_test.rb test/raygun/apm_thread_safety_test.rb test/raygun/event_test.rb test/raygun/http_out_test.rb test/raygun/optional_compile_time_test.rb test/raygun/ringbuf_test.rb test/raygun/shutdown_stress_test.rb test/raygun/translate_test.rb -v
+    Executable: /usr/local/bin/ruby
+```
+
+Load up the backtrace (Ruby by default is built with symbols, the profiler too):
+
+```
+(gdb) bt
+#0  __GI_raise (sig=sig@entry=6) at ../sysdeps/unix/sysv/linux/raise.c:50
+#1  0x00007f99ec354859 in __GI_abort () at abort.c:79
+#2  0x00007f99ec3c745a in __malloc_assert (assertion=assertion@entry=0x7f99ec4eb8a8 "(old_top == initial_top (av) && old_size == 0) || ((unsigned long) (old_size) >= MINSIZE && prev_inuse (old_top) && ((unsigned long) old_end & (pagesize - 1)) == 0)", 
+    file=file@entry=0x7f99ec4e73c3 "malloc.c", line=line@entry=2379, function=function@entry=0x7f99ec4ec030 <__PRETTY_FUNCTION__.13066> "sysmalloc") at malloc.c:298
+#3  0x00007f99ec3c9abf in sysmalloc (nb=nb@entry=199376, av=av@entry=0x7f99ec51ab80 <main_arena>) at malloc.c:2379
+#4  0x00007f99ec3ca913 in _int_malloc (av=av@entry=0x7f99ec51ab80 <main_arena>, bytes=bytes@entry=199353) at malloc.c:4141
+#5  0x00007f99ec3cc419 in __GI___libc_malloc (bytes=199353) at malloc.c:3066
+#6  0x0000562081a6f72a in uncompress_debug_section (shdr=0x7f99e80f0fd8, shdr=0x7f99e80f0fd8, ptr=0x562088a44768, file=0x7f99e8090000 "\177ELF\002\001\001") at addr2line.c:1599
+#7  fill_lines (num_traces=num_traces@entry=30, traces=traces@entry=0x562081b711e0 <trace>, check_debuglink=check_debuglink@entry=1, objp=objp@entry=0x562082ed1288, lines=lines@entry=0x562088acf540, offset=offset@entry=4) at addr2line.c:1718
+#8  0x0000562081a6fd5d in rb_dump_backtrace_with_lines (num_traces=<optimized out>, traces=traces@entry=0x562081b711e0 <trace>) at addr2line.c:2179
+#9  0x0000562081a6abb6 in rb_print_backtrace () at vm_dump.c:717
+#10 rb_vm_bugreport (ctx=ctx@entry=0x562082ed1580) at vm_dump.c:985
+#11 0x0000562081a60e7d in rb_bug_context (ctx=ctx@entry=0x562082ed1580, fmt=fmt@entry=0x562081a9d466 "Segmentation fault at %p") at error.c:609
+#12 0x000056208192d016 in sigsegv (sig=11, info=0x562082ed16b0, ctx=0x562082ed1580) at signal.c:998
+#13 <signal handler called>
+#14 0x00007f99e9c34886 in memcpy (__len=<optimized out>, __src=<optimized out>, __dest=0x562088fdd8b8) at ../../../../ext/raygun/raygun_coercion.c:216
+#15 rb_rg_encode_string (string=string@entry=0x562088fdd8b4, obj=<optimized out>, obj@entry=94697650835440, ecopts=ecopts@entry=8) at ../../../../ext/raygun/raygun_coercion.c:247
+#16 0x00007f99e9c3727a in rb_rg_event_aset (obj=<optimized out>, attr=11735308, val=94697650835440) at ../../../../ext/raygun/raygun_event.c:165
+#17 0x00005620819a890f in vm_call_cfunc_with_frame (ci=0x562083cdb990, cc=<optimized out>, calling=<optimized out>, reg_cfp=0x7f99ebdbab08, ec=0x562082dd03a8) at vm_insnhelper.c:1908
+#18 vm_call_cfunc (ec=<optimized out>, reg_cfp=<optimized out>, calling=<optimized out>, ci=<optimized out>, cc=<optimized out>) at vm_insnhelper.c:1924
+#19 0x00005620819b3354 in vm_call_method (cc=<optimized out>, ci=<optimized out>, calling=<optimized out>, cfp=<optimized out>, ec=<optimized out>) at vm_insnhelper.c:2391
+#20 vm_call_method (ec=0x562082dd03a8, cfp=0x7f99ebdbab08, calling=<optimized out>, ci=<optimized out>, cc=<optimized out>) at vm_insnhelper.c:2367
+#21 0x00005620819bdad9 in vm_exec_core (ec=<optimized out>, initial=<optimized out>) at insns.def:765
+#22 0x00005620819b1a14 in rb_vm_exec (ec=0x562082dd03a8, mjit_enable_p=1) at vm.c:1885
+#23 0x00005620819b5a8b in invoke_block (captured=0x7f99ebdbadf8, opt_pc=<optimized out>, type=<optimized out>, cref=0x0, self=94697645426920, iseq=0x562083e4f350, ec=0x562082dd03a8) at vm.c:1021
+#24 invoke_iseq_block_from_c (me=0x0, is_lambda=<optimized out>, cref=0x0, passed_block_handler=0, argv=0x7ffd288993b8, argc=1, self=94697645426920, captured=0x7f99ebdbadf8, ec=0x562082dd03a8) at vm.c:1092
+#25 invoke_block_from_c_bh (argc=<optimized out>, passed_block_handler=<optimized out>, cref=<optimized out>, is_lambda=<optimized out>, force_blockarg=<optimized out>, argv=<optimized out>, block_handler=<optimized out>, ec=<optimized out>) at vm.c:1110
+#26 vm_yield (argc=1, argv=0x7ffd288993b8, ec=0x562082dd03a8) at vm.c:1155
+#27 rb_yield_0 (argv=0x7ffd288993b8, argc=1) at vm_eval.c:978
+#28 rb_yield_1 (val=<optimized out>) at vm_eval.c:984
+```
+
+Because this looks like a memory corruption bug on the surface from output below, we'll look for any frames that reference malloc and friends:
+
+```
+ruby: malloc.c:2379: sysmalloc: Assertion `(old_top == initial_top (av) && old_size == 0) || ((unsigned long) (old_size) >= MINSIZE && prev_inuse (old_top) && ((unsigned long) old_end & (pagesize - 1)) == 0)' failed.
+Aborted (core dumped)
+```
+
+This cluster is the most interesting:
+
+```
+#12 0x000056208192d016 in sigsegv (sig=11, info=0x562082ed16b0, ctx=0x562082ed1580) at signal.c:998
+#13 <signal handler called>
+#14 0x00007f99e9c34886 in memcpy (__len=<optimized out>, __src=<optimized out>, __dest=0x562088fdd8b8) at ../../../../ext/raygun/raygun_coercion.c:216
+#15 rb_rg_encode_string (string=string@entry=0x562088fdd8b4, obj=<optimized out>, obj@entry=94697650835440, ecopts=ecopts@entry=8) at ../../../../ext/raygun/raygun_coercion.c:247
+```
+
+And source file `raygun_coercion.c` line `216` jumps out as it's the last frame before the sigsegv.
+
+Let's look at the `memcpy`:
+
+```
+#15 rb_rg_encode_string (string=string@entry=0x562088fdd8b4, obj=<optimized out>, obj@entry=94697650835440, ecopts=ecopts@entry=8) at ../../../../ext/raygun/raygun_coercion.c:247
+247	    memcpy(string->string, StringValuePtr(encoded), string->length);
+```
+
+So important here is the binaries have all of the symbols, but an optimization level of 3 (turn everything on) is used and thus complex structure information is not available.
+However interesting for the `memcpy` is the third argument, the length to copy. Let's confirm it's value:
+
+```
+(gdb) p string->length
+$2 = -25536
+```
+
+Whoopsie, that looks like an overflow for sure. I'll defer the fix to PR https://github.com/MindscapeHQ/raygun-apm-ruby/pull/201

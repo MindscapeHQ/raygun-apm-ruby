@@ -1,0 +1,314 @@
+= Changelog
+
+== 1.1 (April 19th, 2021)
+
+* Open Source the profiler
+
+== 1.0.84 (April 17th, 2021)
+
+* Prevent rare shutdown segfault when freeing the builtin method translation table on GC finalization of the tracer instance
+
+== 1.0.83 (April 14th, 2021)
+
+* Also include LICENSE.bipbuffer and COPYING.rax in gemspec
+
+== 1.0.82 (April 11th, 2021)
+
+* Incorporate bipbuf copyright notice - https://github.com/willemt/bipbuffer
+
+== 1.0.81 (March 30th, 2021)
+
+* Support Hash query params for the httpclient hook by coercing the argument with .to_param, if the method is defined (https://github.com/MindscapeHQ/heroku-buildpack-raygun-apm/issues/6#issuecomment-809084318)
+
+== 1.0.80 (March 26th, 2021)
+
+* Fix an unitialized memory access path in rb_rg_blacklisted_method_p
+
+== 1.0.79 (March 7th, 2021)
+
+* Bump license to MIT and incorporate Rax copyright notice - https://github.com/antirez/rax/blob/master/COPYING
+
+== 1.0.78 (Jan 6, 2021)
+
+* Guard against an nil URI value and improve test coverage
+
+== 1.0.77 (Nov 12, 2020)
+
+* Fix bug in 1.0.76 where third party libraries are invisible it traces
+
+== 1.0.76 (Nov 8, 2020)
+
+* Let sync / wait sources like sleep, mutex etc. be filtered out for deep stack library code as well
+
+== 1.0.75 (October 16, 2020)
+
+* Fix segfault observed in Spree for the batch finalization path of events > MTU size but < 4kb
+
+== 1.0.74 (October 10, 2020)
+
+* Blacklist Singleton, Dir and fix typo on Tempfile blacklist
+
+== 1.0.73 (October 4, 2020)
+
+* Do not observe exceptions thrown from libraries when deeper than 1 shadow stack frame into a library
+
+== 1.0.72 (September 23, 2020)
+
+* Let oversized events less than 4096 bytes encoded finalize the current batch and emit as a new batch, otherwise emit as raw UDP
+
+== 1.0.71 (September 25, 2020)
+
+* Limiting profiling of third party libraries to being 1 method deep to improve performance
+
+== 1.0.70 (September 20, 2020)
+
+* Attempt to reference the platform specific default blacklist overrides file locations as a fallback if PROTON_OVERRIDES_FILE is not set
+
+== 1.0.69 (September 9, 2020)
+
+* Fix regression from: Ensure all of the supported hooks are evaluated at boot time
+
+== 1.0.68 (September 9, 2020)
+
+* Ensure all of the supported hooks are evaluated at boot time
+
+== 1.0.67 (September 7, 2020)
+
+* Introduce support for coercing mongodb client events to SQL extended events
+
+== 1.0.66 (Aug 30, 2020)
+
+* Add config options PROTON_UDP_HOST and PROTON_UDP_PORT (DANGER!!!: security, private networks only!!!!)
+
+== 1.0.65 (Aug 4, 2020)
+
+* Introduce support for Mutex#synchronize, Mutex#lock, Mutex#unlock and Mutex#sleep as synchronization method sources
+
+== 1.0.64 (Aug 3, 2020)
+
+* Let Object#sleep be flagged as waiting for syncrhonization method source
+
+== 1.0.63 (Aug 2, 2020)
+
+* Oust rb_rg_add_to_thread_group - does not work well on Windows
+
+== 1.0.62 (Aug 2, 2020)
+
+* Beginnings of a task to trigger per ruby version and platform test suite runs on build
+* Prefer %p to log the trace context key in diagnostics as well
+
+== 1.0.61 (Aug 2, 2020)
+
+* Let rb_rg_add_to_thread_group accept an explicit thread group argument
+
+== 1.0.60 (Aug 2, 2020)
+
+* rb_rg_thread_group does not accept a tracer argument
+
+== 1.0.59 (Aug 2, 2020)
+
+* Introduce additional logging around thread group retrieval
+
+== 1.0.57 (Aug 2, 2020)
+
+* Add a log message right after trace context allocation for debug mode
+
+== 1.0.56 (Aug 1, 2020)
+
+* Also include the execution context thread group and noop status in diagnostics output
+* No need to explicitly free the trace context pointer on the tracer as walking the symbol table of contexts to free it covers
+
+== 1.0.55 (Aug 1, 2020)
+
+* Introduce additional logging context to debug the Windows trace context leaks and prefer rb_rg_trace_context_free to cleanup the context from the tracer struct on GC
+
+== 1.0.54 (July 31, 2020)
+
+* Also log when the tracepoint was not stopped because the trace context was nullified
+
+== 1.0.53 (July 30, 2020)
+
+* Include trace contexts in diagnostics output'
+
+== 1.0.52 (July 27, 2020)
+
+* Let minimum agent version be 1.0.1190.0
+* Introduce support for inferring complex Agent versions via the GetAgentInfo control command
+
+== 1.0.51 (July 26, 2020)
+
+* Fix typo in version.rb
+
+== 1.0.50 (July 16, 2020)
+
+* Depend on Agent version 1.0.1186.0 (first release with thread started v2 support)
+* Implement support for hooking a select few potential high overhead C API (internal) methods without tracing RUBY_EVENT_C_CALL which has severe perf regressions; Implement specific Excon and HTTPClient libraries
+* Introduce support for noop on unsupported minimum agent version and print a warning to incentivate an Agent upgrade
+* Activate thread started v2
+
+== 1.0.49 (July 1, 2020)
+
+* Fix typo
+
+== 1.0.48 (July 1, 2020)
+
+* Add a unknown status fallback to the agent up check
+
+== 1.0.47 (June 30, 2020)
+
+* Compile Darwin FAT binary build rubies with static libruby linking support to mirror semantics of the Linux builds already covered by rake-compiler-dock
+
+== 1.0.46 (June 27, 2020)
+
+* Refactor the default blacklist entries and improve test coverage
+
+== 1.0.45 (June 27, 2020)
+
+* Implement support for the more complex and identified edge case required black and whitelist operations during beta testing
+
+== 1.0.44 (June 17, 2020)
+
+* Ensure we respect the entry frames IDed 1 that starts with Ruby to not be coerced as .NET fallback
+* Add support for a new blacklist syntax to handle Method# style filtering (non-namespaced class) - pending implementation of behaviour
+* Expose the internal radix tree lookups as API for unit testing
+* Further alignment on .NET syntax fallback support
+* Introduce black and whitelist support for native Ruby with fallback to .NET
+
+== 1.0.43 (June 6, 2020)
+
+* Reduce noise for raygun4ruby (Rails only, pending Sidekiq testing)
+* Reduce noisy frames around the Redis integration
+
+== 1.0.42 (June 5, 2020)
+
+* Let the profiler -> agent diagnostic check run on Tracer init for it to be an automatic as opposed to be a manual out of band process
+* Introduce support for tracking thread ancestry despite it not being natively supported by the Ruby VM
+* Check interrupts after thread sleep and define RG_SINK_THREAD_TICK_INTERVAL instead of an inline value
+
+== 1.0.41 (May 30, 2020)
+
+* Prevent thread deadlock / indefinite sleep on shutdown via ruby_cleanup MRI core method by NOT scheduling or sleeping from an aborted or killed thread
+
+== 1.0.40 (May 25, 2020)
+
+* Let standard library be considered a known library method source too
+
+== 1.0.39 (May 17, 2020)
+
+* Remove Tracer#process_started callback as no need to emit process frequency on startup as it is emitted alongside each transaction now
+* Remove process_type command emission from prior to begin_transaction and on process boot, but maintain it for the async methodinfo table sync
+* Also set technology and process type fields on the begin transaction command
+
+== 1.0.38 (May 16, 2020)
+
+* Support CT_EXCEPTION_THROWN_2 and formally remove exception thrown support
+
+== 1.0.37 (May 15, 2020)
+
+* Introduce a Redis client hook
+
+== 1.0.36 (May 10, 2020)
+
+* Add test case and wrapper frame presence for Net::HTTP specific HTTP OUT events
+* Improve test coverage of HTTP OUT events (pending specific httpclient and excon hooks)
+
+== 1.0.35 (May 10, 2020)
+
+* Add a test case for method source and library frame classifications
+* Initial pass at supporting classification of known library specific frames
+* Also add an entrypoint and appropriate black and whitelist entries for HTTPClient
+* Also add an entrypoint and appropriate black and whitelist entries for HTTParty
+* Also add an entrypoint and appropriate black and whitelist entries for Excon
+* Also add an entrypoint and appropriate black and whitelist entries for rest-client
+* Also add an entrypoint and appropriate black and whitelist entries for multipart-post
+* Add library entry point wrapper coverage for Faraday (not at the frame level flags yet)
+
+== 1.0.34 (May 4, 2020)
+
+* Implement a method specific blacklisted to compliment the existing namespace one
+
+== 1.0.33 (April 27, 2020)
+
+* Guard against really large Ruby strings overflowing the int16 Raygun string length by assigning length to an intermediate long first and truncating thereafter
+
+== 1.0.32 (April 26, 2020)
+
+* Let the shadow stack only track the VM stack up to a depth of 256 for deep nested stacks or recursive functions
+* Let the methodtable be included in Tracer#diagnostics as well
+
+== 1.0.31 (April 23, 2020)
+
+* Introduce a reverse jitter buffer for the UDP output to ease pressure on intermediate OS buffers to reduce probability of drops between profiler and Agent
+* Gate the jitter buffer log output with the tracer debug log level at compile time
+* Introduce a jittered output buffer feature in the dispatcher thread to slow down filling up Kernel buffers for an Agent on the same host
+* Let the SO_SNDBUF socket option set mirror the batch packet size
+* Let batch packet size be reflected in Tracer::BATCH_PACKET_SIZE as well
+* Move the batch size constants up to the top of the protocol header (all constants grouped together)
+* Move sink_data to be the last member of the tracer struct
+* Max methodinfo needle size should be 4kb (class) + :: + 4kb (method) + sentinel
+* Move struct members around a bit for better cache locality of reference
+* Also preserve method source for async method table sync
+* Guard against buffer overflow of the blacklist needle as well for exceptionally large methods
+
+== 1.0.30 (April 15, 2020)
+
+* Add overflow checks for the encoded strings API as well
+
+== 1.0.29 (April 11, 2020)
+
+* Add a few more missing GC guards in the tracer core
+
+== 1.0.28 (April 9, 2020)
+
+* Add additional encoding and bipbuf stats for sink debugging
+* Introduce a Tracer#diagnostics method to aid with Gitlab debugging
+* Dispatch buffer bumped to 5MB (up from 1MB)
+
+== 1.0.27 (April 7, 2020)
+
+* Add GC guards for strings passed into Event#[]= and within rb_rg_encode_string* variants as well
+
+== 1.0.26 (April 7, 2020)
+
+* Let the encoder scratch buffer be much larger in order to accommodate potentially massive SQL queries from the SQL OUT events too
+
+== 1.0.25 (April 4, 2020)
+
+* No need to mark the thread from a trace context as the VM will iterate all living threads explicitly for marking from GC roots
+
+== 1.0.24 (April 1, 2020)
+
+* Extract a first class rg_thread_t to wrap Ruby threads and let the shadow stack be per thread
+* Let batches belong to sink data - :boom: any static globals to ensure a clean slate that could only come from Tracer alloc
+
+== 1.0.23 (March 29, 2020)
+
+* Introduce support for configuring the profiler with an API key with the PROTON_API_KEY env var, passed through to the agent via the BEGIN_TRANSACTION command
+
+== 1.0.22 (March 28, 2020)
+
+* Introduce support for tracer environments and implement an alternative (expensive) str based hashing of method paths for Rails development environment
+
+== 1.0.21 (March 25, 2020)
+
+* Do not cache PID on HTTP OUT events to account for forked processes
+* Also reset the batch counter, sequence and pid in the UDP sink on fork
+* Let tracer instances be indexed by PID to play well with forking servers
+
+== 1.0.20 (March 18, 2020)
+
+* Guard against shadow stack underflow errors which can happen when an exception raises
+
+== 1.0.19 (March 16, 2020)
+
+* Combine blacklist and methodinfo tables (one less symbol table lookup on method entry)
+
+== 1.0.18 (March 15, 2020)
+
+* Let the shadow stack be used for method return function ID lookups (saves a symbol table call)
+* Let errors never be pinned to the entrypoint frame (function ID 1)
+* Let the Tracer be able to track a singleton instance per request and plug that into the Net::HTTP hooks
+* Implement a better fallback for libraries like HTTParty which does not set request.uri
+* Blacklist RbConfig, Bundler, WeakRef, Singleton and OpenStruct
+* Let the encoder size assertions only be enabled in debug builds
+* Prefer a single global methodinfo table and synchronize writes to it

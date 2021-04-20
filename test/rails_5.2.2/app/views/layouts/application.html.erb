@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Rails522</title>
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+
+    <%= stylesheet_link_tag    'application', media: 'all', 'data-turbolinks-track': 'reload' %>
+    <%= javascript_include_tag 'application', 'data-turbolinks-track': 'reload' %>
+  </head>
+
+  <body>
+    <h3>Raygun RoR test app</h3>
+      <ul>
+      <li><%= link_to_unless_current 'Simple request that renders', simple_path %></li>
+      <li><%= link_to_unless_current 'Simple request that sleeps 0.5 seconds and then renders', simple_sleep_path %></li>
+      <li><%= link_to_unless_current 'SQL extended events', posts_path %></li>
+      <li><%= link_to_unless_current 'HTTP OUT extended event', simple_http_path %></li>
+      </ul>
+    <%= yield %>
+  </body>
+</html>
