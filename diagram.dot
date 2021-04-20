@@ -1,0 +1,103 @@
+digraph {
+    rankdir=LR;
+    label = "Lifecycle of a single simple request";
+
+    node[shape=box3d width=2.3 height=0.6 fontname="Arial"];
+
+    subgraph cluster_0 {
+        label="HTTP Request";
+        "GET /foo";
+    }
+
+    subgraph cluster_1 {
+        label="Ruby Worker Thread (a unit of work eg. request)";
+        "GET /foo" -> "Ruby Thread";
+        "Ruby Thread" -> "Trace Context";
+        "Ruby Thread" -> "Thread Group";
+        "Thread Group" -> "Trace Context";
+        "Trace Context" -> "Ruby Tracepoint";
+        "Ruby Tracepoint" -> "Tracepoint Event Handler";
+        "Tracepoint Event Handler" -> "BEGIN_TRANSACTION";
+        "Tracepoint Event Handler" -> "THREAD_STARTED: 1";
+        "Tracepoint Event Handler" -> "METHODINFO: 1";
+        "Tracepoint Event Handler" -> "BEGIN: 1";
+        "Tracepoint Event Handler" -> "METHODINFO: 2";
+        "Tracepoint Event Handler" -> "BEGIN: 2";
+        "Tracepoint Event Handler" -> "SQL: SELECT * FROM FOO";
+        "Tracepoint Event Handler" -> "etc.";
+        "Tracepoint Event Handler" -> "END: 2";
+        "Tracepoint Event Handler" -> "END: 1";
+        "Tracepoint Event Handler" -> "HTTP_IN GET /foo";
+        "Tracepoint Event Handler" -> "END_TRANSACTION";
+        "BEGIN_TRANSACTION" -> "Raygun encoder";
+        "THREAD_STARTED: 1" -> "Raygun encoder";
+        "METHODINFO: 1" -> "Raygun encoder";
+        "BEGIN: 1" -> "Raygun encoder";
+        "METHODINFO: 2" -> "Raygun encoder";
+        "BEGIN: 2" -> "Raygun encoder";
+        "SQL: SELECT * FROM FOO" -> "Raygun encoder";
+        "etc." -> "Raygun encoder";
+        "END: 2" -> "Raygun encoder";
+        "END: 1" -> "Raygun encoder";
+        "Tracepoint Event Handler" -> "Raygun encoder";
+        "END_TRANSACTION" -> "Raygun encoder";
+    }
+
+    subgraph cluster_2 {
+        label="Raygun Shadow Thread";
+        "Trace Context" -> "Shadow thread";
+        "Ruby Thread" -> "Shadow thread";
+        "Shadow thread" -> "Shadow stack";
+        "BEGIN: 1" -> "Shadow stack";
+        "BEGIN: 2" -> "Shadow stack";
+        "END: 1" -> "Shadow stack";
+        "END: 2" -> "Shadow stack";
+        "Shadow stack" -> "VM top";
+        "Shadow stack" -> "Shadow top";
+        "Shadow stack" -> "Library depth";
+    }
+
+    subgraph cluster_3 {
+        label="Tracer state";
+        "Methodinfo table";
+        "Ruby Thread" -> "Threadsinfo table";
+        "Shadow thread" -> "Threadsinfo table";
+        "Sink data";
+        "Encoder context" -> "timestamper";
+        "Encoder context" -> "scratch buffer";
+        "scratch buffer" -> "Batcher";
+        "Batcher" -> "Ring buffer";
+        "Trace Context" -> "Tracecontexts table";
+        "THREAD_STARTED: 1" -> "Threadsinfo table";
+        "METHODINFO: 1" -> "Methodinfo table";
+        "BEGIN: 1" -> "Methodinfo table";
+        "METHODINFO: 2" -> "Methodinfo table";
+        "BEGIN: 2" -> "Methodinfo table";
+    }
+
+    subgraph cluster_4 {
+        label="Loosely coupled handoff";
+        "Raygun encoder" -> "Encoder context";
+    }
+
+    subgraph cluster_5 {
+        label="UDP Dispatcher Thread";
+        "Ring buffer" -> "Ring buffer reader";
+        "Ring buffer reader" -> "UDP socket";
+        "Sink data" -> "UDP socket";
+        "UDP socket" -> "send: batch 1";
+        "UDP socket" -> "send: batch 2";
+    }
+
+    subgraph cluster_6 {
+        label="Timer Thread";
+        "Tick: 30 seconds" -> "Methodinfo table";
+        "Methodinfo table" -> "Ring buffer";
+    }
+
+    subgraph cluster_7 {
+        label="Raygun APM Agent";
+        "send: batch 1" -> "port: 2799";
+        "send: batch 2" -> "port: 2799";
+    }
+}
