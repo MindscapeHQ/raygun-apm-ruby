@@ -36,6 +36,8 @@ enum rb_rg_tracer_environment_t
   RB_RG_TRACER_ENV_PRODUCTION = 0x2
 };
 
+#define RB_RG_TRACER_BUILTIN_METHODS_TRANSLATED 5
+
 struct rb_rg_tracer_t;
 
 // Container that represents the profiler's chosen sink state
