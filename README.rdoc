@@ -1,0 +1,117 @@
+= Raygun Application Performance Monitoring
+
+Ruby Profiler for {Raygun Application Performance Monitoring}[https://raygun.com/documentation/language-guides/ruby/apm/installation/].
+
+Distributed as a precompiled native gem.
+
+== Supported platforms
+
+* x86-mingw32
+* x64-mingw32
+* x86-linux
+* x86_64-linux
+* universal-darwin
+
+{Contact us}[https://raygun.com/about/contact] to support other platforms.
+
+== Supported Ruby versions
+
+The profiler only supports CRuby, also known as Matz's Ruby Interpreter (MRI).
+
+* 2.5.x
+* 2.6.x
+* 2.7.x
+
+{Contact us}[https://raygun.com/about/contact] to support other Ruby versions.
+
+== Agent Setup
+
+The Profiler needs to be able to access the Raygun Agent over UDP.
+
+=== Dockerized Agent
+
+The {Dockerized Agent}[https://raygun.com/documentation/product-guides/apm/agent/installation] is supported on all Ruby profiler platforms. We recommend
+this deployment model if your production infrastructure already depends on Docker.
+
+Also a great way to explore on your Mac.
+
+The <code>RAYGUN_AGENT_TOKEN</code> needs to be supplied as an argument and is available under "Application Settings" within the {Raygun Application Performance Monitoring}[https://raygun.com/platform/apm] UI
+
+To launch Raygun Agent using docker
+    docker pull raygunowner/raygun-apm
+    docker run -v raygun-agent:/usr/share/Raygun -e "RAYGUN_AGENT_TOKEN=<token>" -p 2790:2790 -p 2788:2788 -p 2799:2799/udp -it raygunowner/raygun-apm:latest
+
+=== Linux Agent
+
+The Linux version can be installed either using {systemd}[https://raygun.com/documentation/product-guides/apm/agent/installation/#installing-on-linux-using-systemd] or via {terminal}[https://raygun.com/documentation/product-guides/apm/agent/installation/#installing-on-linux-using-terminal]
+
+=== Windows Agent
+
+On windows the agent can be installed either via {MSI installer}[https://raygun.com/documentation/product-guides/apm/agent/installation/#installing-on-linux-using-terminal] or on {.NET core}[https://raygun.com/documentation/product-guides/apm/agent/installation/#installing-on-windows-net-core]
+
+== Ruby on Rails 
+
+For Rails support see {documentation}[https://www.rubydoc.info/gems/raygun-apm-rails/0.1.0] of the railgun-apm-rails gem.
+
+== Profiler Setup
+
+Include the gem in your Gemfile
+
+    gem 'raygun-apm'
+
+Run <code>bundle</code> to install the gem.
+
+Alternatively install using rubygems <code>gem install raygun-apm</code>.
+
+=== Profiler configration
+
+==== Multiple applications, one Agent
+
+Set the `PROTON_API_KEY` environment variable to your API key, which is available under "Application Settings" within the {Raygun Application Performance Monitoring}[https://raygun.com/platform/apm] UI.
+
+=== Standalone ruby script / custom framework
+
+For standalone scripts, context start-end needs to be marked specifically and optionally extended events can be called.
+
+  #!/usr/bin/env ruby
+  require 'raygun/apm'
+  
+  class Hello
+    def rdoc
+      sleep 0.5
+    end
+  end
+  
+  tracer = Raygun::Apm::Tracer.new
+  tracer.udp_sink!
+  tracer.start_trace
+  Hello.new.rdoc
+  tracer.end_trace
+  tracer.process_ended
+
+Extended events can be sent where appropiate
+
+<code>HTTP incoming event</code>
+
+  event = Raygun::Apm::Event::HttpIn.new
+  event[:pid] = Process.pid
+  event[:tid] = 0
+  event[:timestamp] = tracer.now
+  event[:url] = 'https://google.com/'
+  event[:verb] = 'GET'
+  event[:status] = 200
+  event[:duration] = 1000  
+  tracer.emit(event)
+
+<code>SQL query</code>
+
+  event = Raygun::Apm::Event::Sql.new
+  event[:pid] = Process.pid
+  event[:tid] = 0
+  event[:timestamp] = tracer.now
+  event[:provider] = 'postgres'
+  event[:host] = 'localhost'
+  event[:database] = 'rails'
+  event[:query] = 'SELECT * from FOO;'
+  event[:duration] = 1000
+  tracer.emit(event)

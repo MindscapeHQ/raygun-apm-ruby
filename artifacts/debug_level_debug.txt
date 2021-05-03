@@ -1,0 +1,72 @@
+  [Raygun APM] methodinfo table method ctx: 0x7ff2f82729a0 tid: 1 namespace: 0x55fc79559058 method: 11639315651935924558 function_id: 105
+  [Raygun APM] BEGIN 105 ctx: 0x7ff2f82729a0 tid: 1 namespace: 0x55fc79559058 method: 11639315651935924558 function_id: 105 Redmine::Hook::Helper#call_hook
+  [Raygun APM] UDP sink batch 49, smaller than batch packet size 1400, room in current batch, encode BEGIN into batch
+  [Raygun APM] methodinfo table method ctx: 0x7ff2f82729a0 tid: 1 namespace: 0x55fc795591e8 method: 2543656297938923361 function_id: 106
+  [Raygun APM] BEGIN 106 ctx: 0x7ff2f82729a0 tid: 1 namespace: 0x55fc795591e8 method: 2543656297938923361 function_id: 106 Redmine::Hook#call_hook
+  [Raygun APM] UDP sink batch 49, smaller than batch packet size 1400, room in current batch, encode BEGIN into batch
+  [Raygun APM] methodinfo table method ctx: 0x7ff2f82729a0 tid: 1 namespace: 0x55fc795591e8 method: 8244997786037125700 function_id: 107
+  [Raygun APM] BEGIN 107 ctx: 0x7ff2f82729a0 tid: 1 namespace: 0x55fc795591e8 method: 8244997786037125700 function_id: 107 Redmine::Hook#hook_listeners
+  [Raygun APM] UDP sink batch 49, smaller than batch packet size 1400, room in current batch, encode BEGIN into batch
+  [Raygun APM] methodinfo table method ctx: 0x7ff2f82729a0 tid: 1 namespace: 0x55fc795591e8 method: 14381841036702681766 function_id: 108
+  [Raygun APM] BEGIN 108 ctx: 0x7ff2f82729a0 tid: 1 namespace: 0x55fc795591e8 method: 14381841036702681766 function_id: 108 Redmine::Hook#listeners
+  [Raygun APM] UDP sink batch 49, smaller than batch packet size 1400, room in current batch, encode BEGIN into batch
+  [Raygun APM] END 108 ctx: 0x7ff2f82729a0 tid: 1 namespace: 0x55fc795591e8 method: 14381841036702681766 function_id: 108 Redmine::Hook#listeners
+  [Raygun APM] UDP sink batch 49, smaller than batch packet size 1400, room in current batch, encode END into batch
+  [Raygun APM] END 107 ctx: 0x7ff2f82729a0 tid: 1 namespace: 0x55fc795591e8 method: 8244997786037125700 function_id: 107 Redmine::Hook#hook_listeners
+  [Raygun APM] UDP sink batch 49, smaller than batch packet size 1400, room in current batch, encode END into batch
+  [Raygun APM] END 106 ctx: 0x7ff2f82729a0 tid: 1 namespace: 0x55fc795591e8 method: 2543656297938923361 function_id: 106 Redmine::Hook#call_hook
+  [Raygun APM] UDP sink batch 49, smaller than batch packet size 1400, room in current batch, encode END into batch
+  [Raygun APM] END 105 ctx: 0x7ff2f82729a0 tid: 1 namespace: 0x55fc79559058 method: 11639315651935924558 function_id: 105 Redmine::Hook::Helper#call_hook
+  [Raygun APM] UDP sink batch 49, smaller than batch packet size 1400, room in current batch, encode END into batch
+  [Raygun APM] UDP sink batch 49, smaller than batch packet size 1400, room in current batch, encode METHODINFO into batch
+  [Raygun APM] BEGIN 182 ctx: 0x7ff2f82729a0 tid: 1 namespace: 0x55fc79689590 method: 6386938034546916849 function_id: 182 Redmine::SudoMode#was_used?
+  [Raygun APM] UDP sink batch 49, smaller than batch packet size 1400, room in current batch, encode BEGIN into batch
+  [Raygun APM] END 182 ctx: 0x7ff2f82729a0 tid: 1 namespace: 0x55fc79689590 method: 6386938034546916849 function_id: 182 Redmine::SudoMode#was_used?
+  [Raygun APM] UDP sink batch 49, smaller than batch packet size 1400, room in current batch, encode END into batch
+  [Raygun APM] END 51 ctx: 0x7ff2f82729a0 tid: 1 namespace: 0x55fc79689e50 method: 5405215950067153080 function_id: 51 Redmine::SudoMode::Controller#sudo_mode
+  [Raygun APM] UDP sink batch 49, smaller than batch packet size 1400, room in current batch, encode END into batch
+  [Raygun APM] UDP sink batch 49, smaller than batch packet size 1400, room in current batch, encode METHODINFO into batch
+  [Raygun APM] BEGIN 183 ctx: 0x7ff2f82729a0 tid: 1 namespace: 0x55fc796c0f68 method: 671791070695459722 function_id: 183 ApplicationController#record_project_usage
+  [Raygun APM] UDP sink batch 49, smaller than batch packet size 1400, room in current batch, encode BEGIN into batch
+  [Raygun APM] END 183 ctx: 0x7ff2f82729a0 tid: 1 namespace: 0x55fc796c0f68 method: 671791070695459722 function_id: 183 ApplicationController#record_project_usage
+  [Raygun APM] UDP sink batch 49, smaller than batch packet size 1400, room in current batch, encode END into batch
+  Completed 200 OK in 2462ms (Views: 107.5ms | ActiveRecord: 85.4ms)
+
+
+  [Raygun APM] UDP sink batch 49, smaller than batch packet size 1400, room in current batch, encode HTTP_INCOMING_INFORMATION into batch
+  [Raygun APM] END 1 ctx: 0x7ff2f82729a0 tid: 1 namespace: 0x55fc775180a0 method: 77674130508867275 function_id: 1 Raygun::Apm::Rails::Middleware#Ruby_APM_profiler_trace
+  [Raygun APM] UDP sink batch 49, smaller than batch packet size 1400, room in current batch, encode END into batch
+  [Raygun APM] UDP sink batch 49, smaller than batch packet size 1400, room in current batch, encode END_TRANSACTION into batch
+  [Raygun APM] Freeing trace context: 0x7ff2f82729a0
+  [Raygun APM] Trace ENDED for context 0x7ff2f82729a0
+  [Raygun APM] UDP sent:1382 used:20743 unused:10463635
+  [Raygun APM] UDP sent:1389 used:19354 unused:10463635
+  [Raygun APM] UDP sent:1389 used:17965 unused:10463635
+  [Raygun APM] UDP sent:1385 used:16580 unused:10463635
+  [Raygun APM] UDP sent:1385 used:15195 unused:10463635
+  [Raygun APM] UDP sent:1357 used:13838 unused:10463635
+  [Raygun APM] UDP sent:1374 used:12464 unused:10463635
+  [Raygun APM] UDP sent:1388 used:11076 unused:10463635
+  [Raygun APM] UDP sent:1381 used:9695 unused:10463635
+  [Raygun APM] UDP sent:1397 used:8298 unused:10463635
+  [Raygun APM] UDP sent:1397 used:6901 unused:10463635
+  [Raygun APM] UDP sent:1386 used:5515 unused:10463635
+  [Raygun APM] UDP sent:1371 used:4144 unused:10463635
+  [Raygun APM] UDP sent:1382 used:2762 unused:10463635
+  [Raygun APM] UDP sent:1384 used:1378 unused:10463635
+  [Raygun APM] UDP sent:1378 used:0 unused:10485760
+  [Raygun APM] UDP sink batch 49, null event, finalize batch
+  [Raygun APM] UDP sink batch 50 queued:0 used:1390 unused:10484370
+  [Raygun APM] UDP sink - reset batch
+  [Raygun APM] UDP sent:1390 used:0 unused:10485760
+  [Raygun APM] Not flushing empty batch
+  ^C- Gracefully stopping, waiting for requests to finish
+  === puma shutdown: 2020-07-11 00:14:57 +0100 ===
+  - Goodbye!
+  Exiting
+  [Raygun APM] UDP sink batch 50, smaller than batch packet size 1400, room in current batch, encode PROCESS_ENDED into batch
+  [Raygun APM] UDP sink batch 50, null event, finalize batch
+  [Raygun APM] UDP sink batch 51 queued:0 used:32 unused:10485728
+  [Raygun APM] UDP sink - reset batch
+  [Raygun APM] flushing sinks on exit
+  
