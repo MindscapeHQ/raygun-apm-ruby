@@ -212,12 +212,7 @@ void rb_rg_tracer_free(void *ptr)
   tracer->methodinfo = NULL;
 
   // Free the special builtin method handler table - nothing allocated, st_free_table drains the static entries
-  st_free_table(tracer->builtin_translator);
-  // Explicitly nullify
-  tracer->builtin_translator = NULL;
-
-  // Free the special builtin method handler table - nothing allocated, st_free_table drains the static entries
-  if (tracer->builtin_translator->num_entries == 5) {
+  if (tracer->builtin_translator->num_entries == RB_RG_TRACER_BUILTIN_METHODS_TRANSLATED) {
       st_free_table(tracer->builtin_translator);
       // Explicitly nullify
       tracer->builtin_translator = NULL;
@@ -1957,7 +1952,7 @@ static VALUE rb_rg_tracer_alloc(VALUE obj)
 
   // For coercion internal function hooks to avoid the overhead of RUBY_EVENT_C_CALL which would absolutely kill tracer performance.
   // Special case and used during method discovery
-  tracer->builtin_translator = st_init_strtable_with_size(5);
+  tracer->builtin_translator = st_init_strtable_with_size(RB_RG_TRACER_BUILTIN_METHODS_TRANSLATED);
   st_insert(tracer->builtin_translator, (st_data_t)"Raygun::Apm::Hooks::Object", (st_data_t)"Object");
   st_insert(tracer->builtin_translator, (st_data_t)"Raygun::Apm::Hooks::IO", (st_data_t)"IO");
   st_insert(tracer->builtin_translator, (st_data_t)"Raygun::Apm::Hooks::Random", (st_data_t)"Random");

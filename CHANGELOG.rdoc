@@ -1,5 +1,9 @@
 = Changelog
 
+== 1.1.1 (May 6th, 2021)
+
+* Remove the non-gated symbol table free of the builtin method translator and introduce RB_RG_TRACER_BUILTIN_METHODS_TRANSLATED as a constant
+
 == 1.1 (April 19th, 2021)
 
 * Open Source the profiler
