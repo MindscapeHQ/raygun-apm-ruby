@@ -1,5 +1,9 @@
 = Changelog
 
+== 1.1.2 (May 30th, 2021)
+
+* Fix LICENSE merge conflict
+
 == 1.1.1 (May 6th, 2021)
 
 * Remove the non-gated symbol table free of the builtin method translator and introduce RB_RG_TRACER_BUILTIN_METHODS_TRANSLATED as a constant
