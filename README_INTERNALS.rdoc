@@ -4,11 +4,12 @@
 
 All of the released gems for the Ruby APM profiler are compiled and statically linked with <code>libruby</code> at build time. The gems produced have native
 C extensions compiled to a shared object that's loaded at runtime and does not require a build environment or any other toolchain for customers to use. Such
-gems are referred to as FAT gems and is distributed with a directory layout like the following for rubies 2.5 through 2.7 respectively:
+gems are referred to as FAT gems and is distributed with a directory layout like the following for rubies 2.5 through 2.7 and now 3.0 respectively:
 
 * <code>lib/raygun/2.5/raygun_ext.so</code>
 * <code>lib/raygun/2.6/raygun_ext.so</code>
 * <code>lib/raygun/2.7/raygun_ext.so</code>
+* <code>lib/raygun/3.0/raygun_ext.so</code>
 
 At runtime the main gem entrypoint loads the extensions like this and loads the correct extension for the current Ruby version:
 
@@ -69,7 +70,7 @@ To invoke it, we need to execute the <code>bundle exec rake gem:native</code> ta
 
 This spins up the build environment and usually takes about 2 minutes to compile the following matrix (12 compile flows):
 
-* 3 ruby versions, 2.5 through 2.7
+* 4 ruby versions, 2.5 through 2.7 and now 3.0
 * Linux 32 bit, Linux 64 bit
 * Windows 32 bit, Linux 32 bit
 
@@ -89,7 +90,7 @@ At the end of a build procedure for version <code>1.0.49</code> one would expect
   -rw-r--r--  1 raygun-ruby raygun-ruby 148480 jul  1 11:28 raygun-apm-1.0.49-x86-mingw32.gem
 
 A mix of directories and also the final fat gems. The gems are the releasable entities and the directories are the unpacked source for each gem respectively.
-Notice the Ruby version specific directories in the Linux build for Rubies 2.5 through 2.7.
+Notice the Ruby version specific directories in the Linux build for Rubies 2.5 through 2.7 and now 3.0.
 
   raygun-ruby@CarbonX1:~/src/raygun-apm-ruby$ ls -la pkg/raygun-apm-1.0.49-x86_64-linux/lib/raygun
   total 148
@@ -98,6 +99,7 @@ Notice the Ruby version specific directories in the Linux build for Rubies 2.5 t
   drwxr-xr-x 2 raygun-ruby raygun-ruby   4096 jul  1 11:30 2.5
   drwxr-xr-x 2 raygun-ruby raygun-ruby   4096 jul  1 11:30 2.6
   drwxr-xr-x 2 raygun-ruby raygun-ruby   4096 jul  1 11:30 2.7
+  drwxr-xr-x 2 raygun-ruby raygun-ruby   4096 jul  1 11:30 3.0
   drwxr-xr-x 4 raygun-ruby raygun-ruby   4096 jul  1 11:30 apm
   -rw-r--r-- 2 raygun-ruby raygun-ruby    385 jul  1 11:30 apm.rb
   -rwxr-xr-x 2 raygun-ruby raygun-ruby 119704 jul  1 11:30 raygun_ext.so
@@ -128,6 +130,7 @@ Instructions here are for chruby. Install {chruby}(https://github.com/postmodern
   ruby-install ruby 2.5.5 -- --enable-static --enable-install-static-library
   ruby-install ruby 2.6.6 -- --enable-static --enable-install-static-library
   ruby-install ruby 2.7.2 -- --enable-static --enable-install-static-library
+  ruby-install ruby 3.0.1 -- --enable-static --enable-install-static-library
 
 These initial compile steps can take several minutes per Ruby version as it's a clean configure and compile process.
 

@@ -492,7 +492,7 @@ void _init_raygun_event()
   rb_rg_id_parent_tid = rb_intern("parent_tid");
 
   // Define the distinct Ruby land event classes
-  rb_cRaygunEvent = rb_define_class_under(rb_mRaygunApm, "Event", rb_cData);
+  rb_cRaygunEvent = rb_define_class_under(rb_mRaygunApm, "Event", rb_cObject);
   rb_cRaygunEventBegin = rb_define_class_under(rb_cRaygunEvent, "Begin", rb_cRaygunEvent);
   rb_cRaygunEventEnd = rb_define_class_under(rb_cRaygunEvent, "End", rb_cRaygunEvent);
   rb_cRaygunEventMethodinfo = rb_define_class_under(rb_cRaygunEvent, "Methodinfo", rb_cRaygunEvent);

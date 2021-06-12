@@ -148,6 +148,7 @@ module Raygun
         PrettyPrint#
         PP#
         PP::
+        PP#sharing_detection
         PrettyPrint#
         PrettyPrint::
         Minitest
@@ -163,6 +164,8 @@ module Raygun
         Tempfile::
         Logger#
         Logger::
+        Ractor#
+        Ractor::
       }
 
       INTERNALS = %w{

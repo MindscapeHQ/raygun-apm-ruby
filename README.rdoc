@@ -21,6 +21,7 @@ The profiler only supports CRuby, also known as Matz's Ruby Interpreter (MRI).
 * 2.5.x
 * 2.6.x
 * 2.7.x
+* 3.0.x
 
 {Contact us}[https://raygun.com/about/contact] to support other Ruby versions.
 
