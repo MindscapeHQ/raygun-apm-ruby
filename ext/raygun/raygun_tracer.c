@@ -1499,7 +1499,6 @@ static void rb_rg_tracing_hook_i(VALUE tpval, void *data)
 
     // Calculate the numeric method ID for the method being called
     method = rb_rg_method_id(tracer, namespace, tparg, flag, RUBY_EVENT_CALL);
-
     // Lookup into the method info table to determine if we've already discovered this method and if true, if it's white or blacklisted
     if (LIKELY(st_lookup(tracer->methodinfo, (st_data_t)method, &entry))){
       // Early return if this method is blacklisted
@@ -2563,7 +2562,7 @@ void _init_raygun_tracer()
   rb_rg_cThGroup = rb_const_get(rb_cObject, rb_rg_id_th_group);
 
   // Defines the tracer instance which everything else attaches to
-  rb_cRaygunTracer = rb_define_class_under(rb_mRaygunApm, "Tracer", rb_cData);
+  rb_cRaygunTracer = rb_define_class_under(rb_mRaygunApm, "Tracer", rb_cObject);
 
 #define rg_tracer_const(name, val) \
   rb_define_const(rb_cRaygunTracer, name, INT2NUM(val));

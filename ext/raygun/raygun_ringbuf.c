@@ -115,7 +115,7 @@ void _init_raygun_ringbuf()
 {
 
     // Define the class
-    rb_cRaygunRingbuf = rb_define_class_under(rb_mRaygunApm, "Ringbuf", rb_cData);
+    rb_cRaygunRingbuf = rb_define_class_under(rb_mRaygunApm, "Ringbuf", rb_cObject);
 
     // Custom allocator
     rb_define_alloc_func(rb_cRaygunRingbuf, rb_rg_ringbuf_alloc);
