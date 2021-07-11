@@ -967,6 +967,23 @@ class Raygun::ApmTest < Raygun::Test
     assert events.any? { |e| e.class == Raygun::Apm::Event::HttpOut }
   end
 
+  def test_duped_trace_contexts
+    tracer = Raygun::Apm::Tracer.new
+    10.times do
+      tracer.start_trace
+    end
+    tracer.diagnostics
+    10.times do
+      Thread.new do
+        tracer.start_trace
+        sleep 2
+      end
+    end
+    tracer.diagnostics
+    tracer.end_trace
+    tracer.diagnostics
+  end
+
   describe 'config' do
     def test_proton_configs
       config = Raygun::Apm::Config.new({})

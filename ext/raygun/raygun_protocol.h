@@ -32,7 +32,7 @@
 // Shadow thread specific
 #define RG_SHADOW_STACK_LIMIT 256
 #define RG_THREAD_FRAMELESS -1
-#define RG_THREAD_ORPHANED -1
+#define RG_THREAD_ORPHANED 0
 
 // Max scratch buffer size - this is an intermediate static buffer that the encoder encodes to to facilitate the 0 alloc implementation
 #define RG_ENCODER_SCRATCH_BUFFER_SIZE 32 * 1024
