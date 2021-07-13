@@ -9,7 +9,6 @@ VALUE rb_cRaygunTracer;
 static ID rb_rg_id_send,
     rb_rg_id_name_equals,
     rb_rg_id_connect,
-    rb_rg_id_add,
 #ifdef RB_RG_EMIT_ARGUMENTS
     rb_rg_id_parameters,
     rb_rg_id_local_variable_get,
@@ -456,7 +455,7 @@ static inline void rb_rg_spawn_new_batch(rb_rg_sink_data_t *sink_data)
 // of MTU sized batches and could also be directly usable by a TCP transport by just changing the naming and having a TCP
 // dispatcher thread.
 //
-static int rb_rg_batched_sink(rg_context_t *context, void *userdata, rg_event_t *event, const rg_length_t buflen)
+static int rb_rg_batched_sink(rg_context_t *context, void *userdata, const rg_event_t *event, const rg_length_t buflen)
 {
   rb_rg_sink_data_t *sink_data = (rb_rg_sink_data_t *)userdata;
 #ifdef RB_RG_DEBUG
@@ -950,14 +949,14 @@ static long rb_rg_blacklisted_method_p(const rb_rg_tracer_t *tracer, unsigned ch
     }
     if (piter.key_len > 2) {
       // Catch for class paths that terminate with "::" strings
-      if (strncmp(piter.key + piter.key_len - 2, "::", 2) == 0 && strncmp((const char*)fully_qualified, (const char*)piter.key, piter.key_len) == 0) {
+      if (strncmp((const char *)(piter.key + piter.key_len - 2), "::", 2) == 0 && strncmp((const char*)fully_qualified, (const char*)piter.key, piter.key_len) == 0) {
         blacklisted = (long)piter.data;
         if (UNLIKELY(debug)) printf("BL '%s': %.*s path match on tailing '::' %d\n", path, (int)piter.key_len, (char*)piter.key, blacklisted);
         raxStop(&piter);
         goto matched;
       }
       // Catch for method paths that terminate with "#" strings
-      if (strncmp(piter.key + piter.key_len - 1, "#", 1) == 0 && strncmp((const char*)fully_qualified, (const char*)piter.key, piter.key_len) == 0) {
+      if (strncmp((const char *)(piter.key + piter.key_len - 1), "#", 1) == 0 && strncmp((const char*)fully_qualified, (const char*)piter.key, piter.key_len) == 0) {
         blacklisted = (long)piter.data;
         if (UNLIKELY(debug)) printf("BL '%s': %.*s path match on tailing '#' %d\n", path, (int)piter.key_len, (char*)piter.key, blacklisted);
         raxStop(&piter);
@@ -1103,11 +1102,11 @@ static void rb_rg_thread_ended(const rb_rg_tracer_t *tracer, VALUE thread)
   xfree(th);
   // Native thread lock around the shared threadsinfo symbol table. Technically it's not needed for this delete operation as threads
   // only ever delete themselves from ths table (the Tracepoint is a "safepoint", so no concurrent execution happens there because of the interpreter lock)
-  rb_nativethread_lock_lock(&tracer->thread_lock);
+  rb_nativethread_lock_lock((rb_nativethread_lock_t*)&tracer->thread_lock);
   // Removes from the threadsinfo table. Note that the threads counter for TID is monotonically increasing - we never reuse numeric TID mappings as that can
   // lead to all kinds of fail
   st_delete(tracer->threadsinfo, (st_data_t *)&thread, NULL);
-  rb_nativethread_lock_unlock(&tracer->thread_lock);
+  rb_nativethread_lock_unlock((rb_nativethread_lock_t*)&tracer->thread_lock);
   RB_GC_GUARD(thread);
 }
 
@@ -2296,6 +2295,11 @@ VALUE rb_rg_thread_group(rb_thread_t *th)
   }
 }
 
+VALUE rb_rg_thread_group_add(VALUE thgroup, rb_thread_t *th)
+{
+  th->thgroup = thgroup;
+  return Qnil;
+}
 
 // Start a trace context. Could be a single script/console application that has start+stop
 // wrapped around or could be a web request. Initializes any per trace context.
@@ -2325,7 +2329,7 @@ static VALUE rb_rg_tracer_start_trace(VALUE obj)
     // XXX ruby c api does not expose the ThreadGroup api so have to go through Ruby land, unfortunately.
     // Add trace main (invoking) thread to a thread group so we could identify spawned child threads.
     trace_context->thgroup = rb_obj_alloc(rb_rg_cThGroup);
-    rb_funcall(trace_context->thgroup, rb_rg_id_add, 1, thread);
+    rb_rg_thread_group_add(trace_context->thgroup, current_thread);
     // Insert into the trace contexts table, keyed by thread group
     st_insert(tracer->tracecontexts, (st_data_t)trace_context->thgroup, (st_data_t)trace_context);
 #ifdef RB_RG_DEBUG
@@ -2540,7 +2544,6 @@ void _init_raygun_tracer()
   rb_rg_id_send = rb_intern("send");
   rb_rg_id_name_equals = rb_intern("name=");
   rb_rg_id_connect = rb_intern("connect");
-  rb_rg_id_add = rb_intern("add");
 #ifdef RB_RG_EMIT_ARGUMENTS
   rb_rg_id_parameters = rb_intern("parameters");
   rb_rg_id_local_variable_get = rb_intern("local_variable_get");
