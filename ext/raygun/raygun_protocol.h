@@ -6,6 +6,9 @@
 
 #include <inttypes.h>
 
+// Features
+#define RG_ENCODE_ASYNC 1
+
 // Wire protocol specific max and minimum values
 #define RG_MAX_STRING_SIZE 4096
 #define RG_MAX_SHORT_STRING_SIZE 127
@@ -45,6 +48,12 @@
 #define RG_BATCH_HEADLEN 13
 #define RG_SHUTDOWN_GRACE_SECONDS 5
 #define RG_MAX_BLACKLIST_NEEDLE_SIZE RG_MAX_STRING_SIZE + 1 + RG_MAX_STRING_SIZE + 1
+
+// Async encoder
+#ifdef RG_ENCODE_ASYNC
+#define RG_ENCODE_ASYNC_BUF_SIZE 1 * 1024 * 1024
+#define RG_ASYNC_ENCODER_THREAD_TICK_INTERVAL 10000
+#endif
 
 // supported types
 

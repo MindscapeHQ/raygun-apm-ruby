@@ -40,6 +40,19 @@ enum rb_rg_tracer_environment_t
 
 struct rb_rg_tracer_t;
 
+#ifdef RG_ENCODE_ASYNC
+typedef struct _rb_rg_async_event_t {
+  rb_thread_t *current_thread;
+  rb_rg_trace_context_t *trace_context;
+  rb_trace_arg_t *tparg;
+} rb_rg_async_event_t;
+
+typedef struct _rb_rg_async_encoder_t {
+  bool running;
+  bipbuf_t *buffer;
+} rb_rg_async_encoder_t;
+#endif
+
 // Container that represents the profiler's chosen sink state
 
 typedef struct _rb_rg_sink_data_t {
@@ -116,6 +129,10 @@ typedef struct rb_rg_tracer_t {
   VALUE sink_thread;
   // Ruby thread that's responsible for periodically flushing the dispatch ring buffer under low volume conditions and also for syncing the methodinfo table with the agent regularly
   VALUE timer_thread;
+#ifdef RG_ENCODE_ASYNC
+  VALUE encoder_thread;
+  rb_rg_async_encoder_t *async_encoder;
+#endif
 #ifdef RB_RG_EMIT_ARGUMENTS
   VALUE returnvalue_str;
   VALUE catch_all_arg;
@@ -147,6 +164,8 @@ VALUE rb_rg_thread_group(rb_thread_t *th);
 
 // Lookup and coercion helper for Ruby Thread -> Shadow Thread
 rg_thread_t *rb_rg_thread(rb_rg_tracer_t *tracer, VALUE thread);
+
+static void rb_rg_tracing_hook_i0(rb_thread_t *current_thread, rb_rg_tracer_t *tracer, rb_rg_trace_context_t *trace_context, rb_trace_arg_t *tparg);
 
 // Coerces a Ruby heap object to a tracer struct (Ruby object backed by the tracer struct)
 extern const rb_data_type_t rb_rg_tracer_type;

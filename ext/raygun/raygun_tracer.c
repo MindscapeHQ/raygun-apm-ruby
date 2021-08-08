@@ -123,6 +123,9 @@ void rb_rg_tracer_mark(void *ptr)
   rb_gc_mark(tracer->sink_data.payload);
   rb_gc_mark(tracer->timer_thread);
   rb_gc_mark(tracer->sink_thread);
+#ifdef RG_ENCODE_ASYNC
+  rb_gc_mark(tracer->encoder_thread);
+#endif
 }
 
 // A callback function invoked by walking the trace contexts table in function rb_rg_tracer_free. Frees the trace context struct and data it references and
@@ -226,6 +229,11 @@ void rb_rg_tracer_free(void *ptr)
   rb_gc_unregister_address(&tracer->returnvalue_str);
   rb_gc_unregister_address(&tracer->catch_all_arg);
   rb_gc_unregister_address(&tracer->catch_all_arg_val);
+#endif
+
+#ifdef RG_ENCODE_ASYNC
+  bipbuf_free(tracer->async_encoder->buffer);
+  xfree(tracer->async_encoder);
 #endif
   // Remove the special GC registration to ALWAYS consider the encoding options hash as in use
   rb_gc_unregister_address(&tracer->ecopts);
@@ -665,6 +673,35 @@ static VALUE rb_rg_timer_thread(void *ptr)
   }
   return Qtrue;
 }
+
+#ifdef RG_ENCODE_ASYNC
+static VALUE rb_rg_encoder_thread(void *ptr)
+{
+  rb_rg_tracer_t *tracer = NULL;
+  rb_rg_async_event_t *event = NULL;
+  struct timeval tv;
+  tracer = (rb_rg_tracer_t *)ptr;
+  tv.tv_sec = RG_ASYNC_ENCODER_THREAD_TICK_INTERVAL;
+  tv.tv_usec = 0;
+  tracer->async_encoder->running = true;
+  while(tracer->async_encoder->running || !bipbuf_is_empty(tracer->async_encoder->buffer))
+  {
+    while(!bipbuf_is_empty(tracer->async_encoder->buffer)) {
+      event = (rb_rg_async_event_t *)bipbuf_poll(tracer->async_encoder->buffer, sizeof(rb_rg_async_event_t));
+      if (LIKELY(event)) {
+        rb_rg_tracing_hook_i0(event->current_thread, tracer, event->trace_context, event->tparg);
+      } else {
+        tracer->async_encoder->running = false;
+        break;
+      }
+    }
+    if (tracer->async_encoder->running) {
+      rb_rg_thread_wait_for(tv);
+    }
+  }
+  return Qtrue;
+}
+#endif
 
 // The main sink thread that is responsible for driving UDP dispatch. This thread is the other end of the bipbuf (ring buffer)
 // and is the only consumer of it. The dispatch main loop balances sending as fast as possible when the buffer has data to send
@@ -1421,11 +1458,7 @@ static inline rg_function_id_t rb_rg_stack_peek(rg_thread_t *thread)
   return thread->shadow_stack[thread->shadow_top];
 }
 
-// Callback from the Ruby tracepoint API - try to do as little work as possible here, BUT unfortunately there's a lot going on
-// As a future optimization it may make sense to have distinct callbacks per event eg. RUBY_EVENT_THREAD_BEGIN would have it's own
-// to reduce code size of the callback and remove branches + the switch statement.
-//
-static void rb_rg_tracing_hook_i(VALUE tpval, void *data)
+static void rb_rg_tracing_hook_i0(rb_thread_t *current_thread, rb_rg_tracer_t *tracer, rb_rg_trace_context_t *trace_context, rb_trace_arg_t *tparg)
 {
   VALUE exception, namespace, thread;
   st_data_t entry;
@@ -1443,19 +1476,14 @@ static void rb_rg_tracing_hook_i(VALUE tpval, void *data)
 #endif
   rg_instance_id_t instance;
   rg_function_id_t function_id;
-  rb_rg_trace_context_t *trace_context = (rb_rg_trace_context_t *)data;
-  rb_rg_tracer_t *tracer = (rb_rg_tracer_t *)trace_context->tracer;
   rg_method_t *rg_method = NULL;
-  rg_thread_t *rg_thread = trace_context->rg_thread;
-
-  // Grab a reference to the current executing thread
-  thread = rb_thread_current();
+  rg_thread_t *rg_thread = NULL;
+  rg_thread = trace_context->rg_thread;
+  thread = current_thread->self;
 
   // We don't care about what happens on the sink or timer threads - a few Ruby method calls occur on those.
   if (UNLIKELY(thread == tracer->sink_thread || thread == tracer->timer_thread)) return;
 
-  // Get the relevant information from the Tracepoint API we need to make decisions on how to proceed further
-  rb_trace_arg_t *tparg = rb_tracearg_from_tracepoint(tpval);
   rb_event_flag_t flag = rb_tracearg_event_flag(tparg);
 
   // Let the trace context's parent thread be the current thread UNLESS we're processing the RUBY_EVENT_THREAD_BEGIN event
@@ -1467,7 +1495,7 @@ static void rb_rg_tracing_hook_i(VALUE tpval, void *data)
   // OR any threads that has the same Thread Group assigned, meaning they were spawned by the thread that is pinned to the
   // trace context.
   if (UNLIKELY(thread != trace_context->thread)) {
-    if (LIKELY(rb_rg_thread_group(GET_THREAD()) == trace_context->thgroup)) {
+    if (LIKELY(rb_rg_thread_group(current_thread) == trace_context->thgroup)) {
       // Let tid be that of the current executing thread as it's part of the trace context's thread
       // group and thus it was spawned within the trace context transaction boundaries and thus we
       // care about instrumenting it
@@ -1679,6 +1707,31 @@ static void rb_rg_tracing_hook_i(VALUE tpval, void *data)
   RB_GC_GUARD(thread);
 }
 
+// Callback from the Ruby tracepoint API - try to do as little work as possible here, BUT unfortunately there's a lot going on
+// As a future optimization it may make sense to have distinct callbacks per event eg. RUBY_EVENT_THREAD_BEGIN would have it's own
+// to reduce code size of the callback and remove branches + the switch statement.
+//
+static void rb_rg_tracing_hook_i(VALUE tpval, void *data)
+{
+  rb_rg_trace_context_t *trace_context = NULL;
+  rb_rg_tracer_t *tracer = NULL;
+#ifdef RG_ENCODE_ASYNC
+  rb_rg_async_event_t async_event;
+#endif
+  trace_context = (rb_rg_trace_context_t *)data;
+  tracer = (rb_rg_tracer_t *)trace_context->tracer;
+  // Get the relevant information from the Tracepoint API we need to make decisions on how to proceed further
+  rb_trace_arg_t *tparg = rb_tracearg_from_tracepoint(tpval);
+#ifdef RG_ENCODE_ASYNC
+  async_event.current_thread = GET_THREAD();
+  async_event.trace_context = trace_context;
+  async_event.tparg = tparg;
+  bipbuf_offer(tracer->async_encoder->buffer, (unsigned char*)&async_event, sizeof(async_event));
+#else
+  rb_rg_tracing_hook_i0(GET_THREAD(), tracer, trace_context, tparg);
+#endif
+}
+
 // Tracer methods
 
 // Called by a GC finalizer (called before the Tracer is collected on program exit) defined in the wrapper gems (Rails and Sidekiq) to signal the
@@ -1739,6 +1792,15 @@ static VALUE rb_rg_tracer_timer_thread_set_name(VALUE thread)
 {
   return rb_funcall(thread, rb_rg_id_name_equals, 1, rb_str_new2("raygun timer"));
 }
+
+#ifdef RG_ENCODE_ASYNC
+// An intermediate function that is wrapped in rb_protect and responsible for spawning the encoder thread
+static VALUE rb_rg_tracer_create_encoder_thread(VALUE data)
+{
+  rb_rg_tracer_t *tracer = (rb_rg_tracer_t *)data;
+  return rb_thread_create(rb_rg_encoder_thread, (void *)tracer);
+}
+#endif
 
 // An intermediate function that is wrapped in rb_protect and responsible for spawning the UDP emission thread
 static VALUE rb_rg_tracer_create_udp_sink_thread(VALUE data)
@@ -1994,6 +2056,14 @@ static VALUE rb_rg_tracer_alloc(VALUE obj)
   rb_gc_register_address(&tracer->catch_all_arg_val);
   // it is critical that rb_gc_register_address gets called right after alloc and before any other allocs
 #endif
+
+#ifdef RG_ENCODE_ASYNC
+  tracer->async_encoder = ZALLOC(rb_rg_async_encoder_t);
+  tracer->async_encoder->buffer = bipbuf_new(RG_ENCODE_ASYNC_BUF_SIZE);
+  if(!tracer->async_encoder->buffer ) {
+    rb_raise(rb_eRaygunFatal, "Could not allocate async encoder buffer");
+  }
+#endif
   // Let the GC know to not try to recycle the options hash used for String encoding
   rb_gc_register_address(&tracer->ecopts);
   tracer->ecopts = rb_hash_new();
@@ -2057,6 +2127,22 @@ static VALUE rb_rg_tracer_alloc(VALUE obj)
       printf("[Raygun APM] timer thread started\n");
     }
 #endif
+#ifdef RG_ENCODE_ASYNC
+  // Spawn the encoder thread in a safe manner with rb_protect - fatal error if we couldn't
+  tracer->encoder_thread = rb_protect(rb_rg_tracer_create_encoder_thread, (VALUE)tracer, &status);
+  if (UNLIKELY(status)) {
+    // Clearing error info to ignore the caught exception
+    rb_set_errinfo(Qnil);
+    // Fatal error if we cannot start the encoder thread
+#ifdef RB_RG_DEBUG
+    if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_ERROR && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST)) {
+      printf("[Raygun APM] Could not start the encoder thread\n");
+    }
+#endif
+    rb_raise(rb_eRaygunFatal, "Could not start the encoder thread");
+  }
+#endif
+
   // Returns the wrapped Ruby object
   return TypedData_Wrap_Struct(obj, &rb_rg_tracer_type, tracer);
 }
