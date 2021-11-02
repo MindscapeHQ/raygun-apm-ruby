@@ -5,12 +5,14 @@ module Raygun
         class RubyTranslator
           # Foo::Bar#baz
           # Foo::Bar.baz
+          # Foo::Bar::baz
           COMMENT = /^#.*/
           ANONYMOUS = /^#<.*>?/
           NAMESPACE = /::/
           NAMESPACE_ONLY = /::$/
           METHOD = /#|\./
           LETTER_CASE = /^[A-Z]/
+          LOWER_CASE = /^[a-z]/
 
           def translate(filter)
             path, method = nil, nil
@@ -29,6 +31,10 @@ module Raygun
 
               # .NET fallback
               return if method =~ NAMESPACE
+              if path && (_method = path.split(NAMESPACE).last) =~ LOWER_CASE
+                method = _method
+                path.gsub!(Regexp.compile("::#{method}$"), "")
+              end
               [path, method]
             elsif filter =~ ANONYMOUS
               _, klass, method = filter.split(METHOD)

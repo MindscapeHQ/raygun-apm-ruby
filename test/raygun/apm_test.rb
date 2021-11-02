@@ -665,6 +665,38 @@ class Raygun::ApmTest < Raygun::Test
     assert events.empty?
   end
 
+  def test_live_blacklist_file
+    ENV['PROTON_USER_OVERRIDES_FILE'] = File.join(__dir__, 'blacklist_live.txt')
+    tracer = Raygun::Apm::Tracer.new
+    events = []
+    tracer.callback_sink = Proc.new do |event|
+      events << event
+    end
+
+    tracer.start_trace
+    @subject.blacklist1
+    @subject.blacklist2
+    tracer.end_trace
+
+    expected_events = [
+      Raygun::Apm::Event::ProcessFrequency,
+      Raygun::Apm::Event::BeginTransaction,
+      Raygun::Apm::Event::Methodinfo,
+      Raygun::Apm::Event::Begin,
+      Raygun::Apm::Event::End,
+      Raygun::Apm::Event::EndTransaction,
+    ]
+
+    assert_equal expected_events, events.map{|e| e.class}
+    methodinfo = events[2]
+    assert_equal 'Subject', methodinfo[:class_name]
+    assert_equal "blacklist2", methodinfo[:method_name]
+    assert_equal methodinfo[:function_id], events[3][:function_id]
+    assert_equal methodinfo[:function_id], events[4][:function_id]
+  ensure
+    ENV.delete('PROTON_USER_OVERRIDES_FILE')
+  end
+
   def test_blacklist_overrides_file
     ENV['PROTON_USER_OVERRIDES_FILE'] = File.join(__dir__, 'blacklist_overrides.txt')
     tracer = Raygun::Apm::Tracer.new

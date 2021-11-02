@@ -37,5 +37,8 @@ class Raygun::TranslateTest < Raygun::Test
     assert_equal ["Foo::Bar",  nil], @translator.translate("Foo.Bar")
     assert_equal ["Foo::Bar::",  nil], @translator.translate("Foo.Bar.")
     assert_nil @translator.translate("#Foo.Bar::baz")
+    assert_equal ["FilterReason",  "to_dc"], @translator.translate("FilterReason::to_dc")
+    assert_equal ["InvestigationWorkflow",  "closed_transitions"], @translator.translate("InvestigationWorkflow::closed_transitions")
+    assert_equal ["Foo::InvestigationWorkflow",  "closed_transitions"], @translator.translate("Foo::InvestigationWorkflow::closed_transitions")
   end
 end

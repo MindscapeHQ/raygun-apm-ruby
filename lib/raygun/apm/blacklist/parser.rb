@@ -27,6 +27,8 @@ module Raygun
             @tracer.add_whitelist *translate(filter[1..-1])
           elsif filter.start_with?('-')
             @tracer.add_blacklist *translate(filter[1..-1])
+          elsif filter.start_with?('L-')
+            @tracer.add_blacklist *translate(filter[2..-1])
           elsif filter.size > 0
             @tracer.add_blacklist *translate(filter)
           end
