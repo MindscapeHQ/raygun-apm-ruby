@@ -1,5 +1,10 @@
 = Changelog
 
+== 1.1.5 (Nov 2nd, 2021)
+
+* Handle edge case in blacklist parsing of .NET style Foo::bar
+* Introduce support for parsing live blacklist entries (L- prefix) as well
+
 == 1.1.4 (July 11th, 2021)
 
 * Ensure that the trace context thread group can always be set (ensures 1:1 mapping of thread -> trace context)
