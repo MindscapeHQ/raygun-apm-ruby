@@ -1,5 +1,9 @@
 = Changelog
 
+== 1.1.8 (Jan 3, 2022)
+
+* Support TCP mode for dispatch
+
 == 1.1.7 (Jan 3, 2022)
 
 * Handle case where the exception message in rb_rg_log_silenced_error can be undefined
