@@ -79,7 +79,7 @@ module Raygun
         end
       end
 
-      def protoon_tcp_host
+      def proton_tcp_host
         env['PROTON_TCP_HOST'] ? env['PROTON_TCP_HOST'].to_s : TCP_SINK_HOST
       end
 
