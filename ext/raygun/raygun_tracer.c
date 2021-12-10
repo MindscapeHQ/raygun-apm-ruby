@@ -24,7 +24,8 @@ static ID rb_rg_id_send,
     rb_rg_id_host,
     rb_rg_id_port,
     rb_rg_id_receive_buffer_size,
-    rb_rg_id_exception_correlation_ivar;
+    rb_rg_id_exception_correlation_ivar,
+    rb_rg_id_message;
 
 static VALUE rb_rg_cThGroup;
 
@@ -58,6 +59,14 @@ void __stack_chk_fail(void)
  printf("Stack poisoning detected\n");
 }
 #endif
+
+// Log errors silenced in timer and dispatch threads by rb_protect
+static void rb_rg_log_silenced_error()
+{
+  VALUE msg = rb_check_funcall(rb_errinfo(), rb_rg_id_message, 0, 0);
+  if (NIL_P(msg)) return;
+  printf("[Raygun APM] error: %s\n", RSTRING_PTR(msg));
+}
 
 // A small wrapper called on shutdown that infers if the currently running thread is scheduled to be killed or not
 int
@@ -414,6 +423,7 @@ static int rb_rg_callback_sink(rg_context_t *context, rb_rg_sink_data_t *sink_da
   sink_data->payload = wrapped_event;
   rb_protect(rb_rg_callback_sink_call, (VALUE)sink_data, &status);
   if (UNLIKELY(status)) {
+    rb_rg_log_silenced_error();
     // Clearing error info to ignore the caught exception
     rb_set_errinfo(Qnil);
     return -1;
@@ -752,6 +762,7 @@ static VALUE rb_rg_udp_sink_thread(void *ptr)
         if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_ERROR && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST))
           printf("[Raygun APM] UDP thread failed to send\n");
 #endif
+        rb_rg_log_silenced_error();
         // Clearing error info to ignore the caught exception
         rb_set_errinfo(Qnil);
         data->failed_sends++;
@@ -1390,6 +1401,7 @@ static void rb_rg_process_ended(VALUE obj)
     // Give it a small grace period (but happy path is almost always immediate) to terminate
     rb_protect(rb_rg_join_sink_thread, tracer->sink_thread, &status);
     if (UNLIKELY(status)) {
+      rb_rg_log_silenced_error();
       // Clearing error info to ignore the caught exception
       rb_set_errinfo(Qnil);
     }
@@ -1846,6 +1858,7 @@ static VALUE rb_rg_tracer_udp_sink_set(int argc, VALUE* argv, VALUE obj)
   // Spin up the UDP dispatch thread safely - shutdown the tracer if that failed
   tracer->sink_thread = rb_protect(rb_rg_tracer_create_udp_sink_thread, (VALUE)&tracer->sink_data, &status);
   if (UNLIKELY(status)) {
+    rb_rg_log_silenced_error();
     // Clearing error info to ignore the caught exception
     rb_set_errinfo(Qnil);
     // Fatal error if we cannot start the UDP sender thread
@@ -1859,6 +1872,7 @@ static VALUE rb_rg_tracer_udp_sink_set(int argc, VALUE* argv, VALUE obj)
   // Attempt to set the name for the UDP dispatch thread, no biggy if we can't
   rb_protect(rb_rg_tracer_udp_sink_thread_set_name, tracer->sink_thread, &status);
   if (UNLIKELY(status)) {
+    rb_rg_log_silenced_error();
     // Clearing error info to ignore the caught exception
     rb_set_errinfo(Qnil);
     // Not fatal if we cannot set the thread name, continue
@@ -2034,6 +2048,7 @@ static VALUE rb_rg_tracer_alloc(VALUE obj)
   // Spawn the timer thread in a safe manner with rb_protect - fatal error if we couldn't
   tracer->timer_thread = rb_protect(rb_rg_tracer_create_timer_thread, (VALUE)&tracer->sink_data, &status);
   if (UNLIKELY(status)) {
+    rb_rg_log_silenced_error();
     // Clearing error info to ignore the caught exception
     rb_set_errinfo(Qnil);
     // Fatal error if we cannot start the timer thread
@@ -2048,6 +2063,7 @@ static VALUE rb_rg_tracer_alloc(VALUE obj)
   // Attempt to set the timer thread name - no biggy if this fails
   rb_protect(rb_rg_tracer_timer_thread_set_name, tracer->timer_thread, &status);
   if (UNLIKELY(status)) {
+    rb_rg_log_silenced_error();
     // Clearing error info to ignore the caught exception
     rb_set_errinfo(Qnil);
     // Not fatal if we cannot set the thread name, continue
@@ -2560,6 +2576,7 @@ void _init_raygun_tracer()
   rb_rg_id_port = rb_intern("port");
   rb_rg_id_receive_buffer_size = rb_intern("receive_buffer_size");
   rb_rg_id_exception_correlation_ivar = rb_intern("@__raygun_correlation_id");
+  rb_rg_id_message = rb_intern("message");
 
   // do the thread group class name lookup ahead of time so we don't incur runtime overhead for this
   rb_rg_cThGroup = rb_const_get(rb_cObject, rb_rg_id_th_group);

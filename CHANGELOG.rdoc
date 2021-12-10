@@ -1,5 +1,9 @@
 = Changelog
 
+== 1.1.6 (Dec 10, 2021)
+
+* Log exceptions raised and swallowed by rb_protect in the timer and dispatch threads
+
 == 1.1.5 (Nov 2nd, 2021)
 
 * Handle edge case in blacklist parsing of .NET style Foo::bar
