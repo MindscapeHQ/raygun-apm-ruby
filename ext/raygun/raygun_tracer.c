@@ -64,7 +64,7 @@ void __stack_chk_fail(void)
 static void rb_rg_log_silenced_error()
 {
   VALUE msg = rb_check_funcall(rb_errinfo(), rb_rg_id_message, 0, 0);
-  if (NIL_P(msg)) return;
+  if (msg == Qundef || NIL_P(msg)) return;
   printf("[Raygun APM] error: %s\n", RSTRING_PTR(msg));
 }
 
