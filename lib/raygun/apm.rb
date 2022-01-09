@@ -1,4 +1,5 @@
 require "raygun/apm/version"
+require "socket"
 
 begin
   # Attempt to load a precompiled shared object (released gem)

@@ -1,6 +1,5 @@
 require 'raygun/apm/blacklist'
 require 'rbconfig'
-require "socket"
 
 module Raygun
   module Apm
@@ -46,12 +45,9 @@ module Raygun
       end
 
       def tcp_sink!
-        sock = TCPSocket.new(config.proton_tcp_host, config.proton_tcp_port)
         self.tcp_sink(
-          socket: sock,
-          host: config.proton_udp_host,
-          port: config.proton_udp_port,
-          receive_buffer_size: sock.getsockopt(Socket::SOL_SOCKET, Socket::SO_RCVBUF).int
+          host: config.proton_tcp_host,
+          port: config.proton_tcp_port
         )
       rescue => e
         # XXX works for the middleware wrapped case, not for standalone - revisit
