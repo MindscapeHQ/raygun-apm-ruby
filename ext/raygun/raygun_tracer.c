@@ -626,6 +626,10 @@ static VALUE rb_rg_udp_sink_send(VALUE ptr)
 static VALUE rb_rg_tcp_sink_send(VALUE ptr)
 {
   rb_rg_sink_data_t *data = (rb_rg_sink_data_t *)ptr;
+  if (NIL_P(data->sock)) {
+    printf("[Raygun APM] TCP socket disconnected %s:%d - not sending %ld bytes of profiler data\n", RSTRING_PTR(data->host), NUM2INT(data->port), RSTRING_LEN(data->payload));
+    return Qfalse;
+  }
   return rb_funcall(data->sock, rb_rg_id_write, 1, data->payload);
 }
 
@@ -708,6 +712,9 @@ static VALUE rb_rg_timer_thread(void *ptr)
         rb_rg_log_silenced_error();
         // Clearing error info to ignore the caught exception
         rb_set_errinfo(Qnil);
+        printf("[Raygun APM] TCP socket %s:%d not yet connected in timer thread, reconnecting in %d seconds\n", RSTRING_PTR(tracer->sink_data.host), NUM2INT(tracer->sink_data.port), RG_SINK_THREAD_TICK_INTERVAL / 100000);
+      } else {
+        printf("[Raygun APM] TCP socket %s:%d connected in timer thread\n", RSTRING_PTR(tracer->sink_data.host), NUM2INT(tracer->sink_data.port));
       }
     }
   }
@@ -895,6 +902,7 @@ static VALUE rb_rg_tcp_sink_thread(void *ptr)
 #endif
         rb_rg_log_silenced_error();
         data->sock = Qnil;
+        printf("[Raygun APM] TCP socket disconnected %s:%d , reconnecting in %d seconds\n", RSTRING_PTR(data->host), NUM2INT(data->port), RG_SINK_THREAD_TICK_INTERVAL / 100000);
         // Clearing error info to ignore the caught exception
         rb_set_errinfo(Qnil);
         data->failed_sends++;
@@ -2142,8 +2150,11 @@ static VALUE rb_rg_tracer_tcp_sink_set(int argc, VALUE* argv, VALUE obj)
   tracer->sink_data.sock = rb_protect(rb_rg_tracer_initialise_tcp_socket, (VALUE)tracer, &status);
   if (UNLIKELY(status)) {
     rb_rg_log_silenced_error();
+    printf("[Raygun APM] TCP socket %s:%d not yet connected, reconnecting in %d seconds\n", RSTRING_PTR(tracer->sink_data.host), NUM2INT(tracer->sink_data.port), RG_SINK_THREAD_TICK_INTERVAL / 100000);
     // Clearing error info to ignore the caught exception
     rb_set_errinfo(Qnil);
+  } else {
+    printf("[Raygun APM] TCP socket %s:%d connected without timer thread\n", RSTRING_PTR(tracer->sink_data.host), NUM2INT(tracer->sink_data.port));
   }
   return Qtrue;
 }
