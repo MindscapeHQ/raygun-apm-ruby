@@ -52,9 +52,9 @@ module Raygun
       end
 
       # Initial constants for ProtonAgentTail.exe
-      UDP_SINK_HOST = TCP_MANAGEMENT_HOST = '127.0.0.1'
+      UDP_SINK_HOST = TCP_SINK_HOST = TCP_MANAGEMENT_HOST = '127.0.0.1'
       UDP_SINK_MULTICAST_HOST = '239.100.15.215'
-      UDP_SINK_PORT = 2799
+      UDP_SINK_PORT = TCP_SINK_PORT = 2799
       TCP_MANAGEMENT_PORT = 2790
 
       ## Enumerate all PROTON_ constants
@@ -68,6 +68,8 @@ module Raygun
       ## New - Ruby profiler
       config_var 'PROTON_UDP_HOST', as: String, default: UDP_SINK_HOST
       config_var 'PROTON_UDP_PORT', as: Integer, default: UDP_SINK_PORT
+      config_var 'PROTON_TCP_HOST', as: String, default: TCP_SINK_HOST
+      config_var 'PROTON_TCP_PORT', as: Integer, default: TCP_SINK_PORT
 
       def proton_udp_host
         if proton_use_multicast == 'True'
@@ -75,6 +77,10 @@ module Raygun
         else
           env['PROTON_UDP_HOST'] ? env['PROTON_UDP_HOST'].to_s : UDP_SINK_HOST
         end
+      end
+
+      def proton_tcp_host
+        env['PROTON_TCP_HOST'] ? env['PROTON_TCP_HOST'].to_s : TCP_SINK_HOST
       end
 
       def loglevel

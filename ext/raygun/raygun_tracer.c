@@ -25,9 +25,13 @@ static ID rb_rg_id_send,
     rb_rg_id_port,
     rb_rg_id_receive_buffer_size,
     rb_rg_id_exception_correlation_ivar,
-    rb_rg_id_message;
+    rb_rg_id_message,
+    rb_rg_id_write,
+    rb_rg_id_tcp_socket,
+    rb_rg_id_new;
 
 static VALUE rb_rg_cThGroup;
+static VALUE rb_rg_cTcpSocket;
 
 // The main typed data struct that helps to inform the VM (mostly the GC) on how to handle a wrapped structure
 // References https://github.com/ruby/ruby/blob/master/doc/extension.rdoc#encapsulate-c-data-into-a-ruby-object-
@@ -60,10 +64,13 @@ void __stack_chk_fail(void)
 }
 #endif
 
+static VALUE rb_rg_tracer_initialise_tcp_socket(VALUE obj);
+
 // Log errors silenced in timer and dispatch threads by rb_protect
 static void rb_rg_log_silenced_error()
 {
-  VALUE msg = rb_check_funcall(rb_errinfo(), rb_rg_id_message, 0, 0);
+  VALUE exception = rb_errinfo();
+  VALUE msg = rb_check_funcall(exception, rb_rg_id_message, 0, 0);
   if (msg == Qundef || NIL_P(msg)) return;
   printf("[Raygun APM] error: %s\n", RSTRING_PTR(msg));
 }
@@ -128,7 +135,7 @@ void rb_rg_tracer_mark(void *ptr)
   rb_gc_mark(tracer->sink_data.sock);
   rb_gc_mark(tracer->sink_data.host);
   rb_gc_mark(tracer->sink_data.port);
-  // Noop for UDP sink, required for the callback sink
+  // Noop for UDP and TCP sinks, required for the callback sink
   rb_gc_mark(tracer->sink_data.payload);
   rb_gc_mark(tracer->timer_thread);
   rb_gc_mark(tracer->sink_thread);
@@ -188,7 +195,7 @@ void rb_rg_tracer_free(void *ptr)
   rb_nativethread_lock_destroy(&tracer->method_lock);
   rb_nativethread_lock_destroy(&tracer->thread_lock);
   // Free for UDP and other transport oriented sinks - no bipbuf allocated for callback sink
-  if (RTEST(tracer->sink_data.sock))
+  if ((tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP))
     bipbuf_free(tracer->sink_data.ringbuf.bipbuf);
 
   // Free the source of truth for the radix trees
@@ -243,7 +250,7 @@ void rb_rg_tracer_free(void *ptr)
   // Remove the special GC registration to ALWAYS consider the process type string as in use
   rb_gc_unregister_address(&tracer->process_type);
   // Unregister for UDP or other transport oriented sinks only
-  if (RTEST(tracer->sink_data.sock))
+  if ((tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP))
     rb_gc_unregister_address(&tracer->sink_data.payload);
   // Finally free the tracer
   xfree(tracer);
@@ -302,7 +309,7 @@ size_t rb_rg_tracer_size(const void *ptr)
           st_memsize(tracer->methodinfo) +
           st_memsize(tracer->threadsinfo);
   // Add the ringbuffer allocated size, for transport oriented sinks
-  if (RTEST(tracer->sink_data.sock)) size += bipbuf_size(tracer->sink_data.ringbuf.bipbuf);
+  if (tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP) size += bipbuf_size(tracer->sink_data.ringbuf.bipbuf);
   // Now add the values of the trace contexts table as well
   st_foreach(tracer->tracecontexts, rb_rg_add_trace_context_size_i, (st_data_t)&size);
   // Now add the values of the methodinfo table as well
@@ -461,6 +468,18 @@ static inline void rb_rg_spawn_new_batch(rb_rg_sink_data_t *sink_data)
     sink_data->batches++;
 }
 
+#ifdef RB_RG_DEBUG
+static inline char* rb_rg_tracer_sink_name(rb_rg_sink_data_t *sink_data)
+{
+  switch(sink_data->type){
+    case RB_RG_TRACER_SINK_TCP:
+          return "TCP";
+    case RB_RG_TRACER_SINK_UDP:
+          return "UDP";
+  }
+}
+#endif
+
 // Sink that emits a UDP packet. This callback could be more generic, perhaps rb_rg_batched_sink as it ensures a stream
 // of MTU sized batches and could also be directly usable by a TCP transport by just changing the naming and having a TCP
 // dispatcher thread.
@@ -486,7 +505,7 @@ static int rb_rg_batched_sink(rg_context_t *context, void *userdata, const rg_ev
     // room for extra data in current batch, encode in batch
 #ifdef RB_RG_DEBUG
     if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_DEBUG && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST))
-      printf("[Raygun APM] UDP sink batch %u, smaller than batch packet size %u, room in current batch, encode %s into batch\n", sink_data->batch.sequence, RG_BATCH_PACKET_SIZE, rb_rg_event_type_to_str(event));
+      printf("[Raygun APM] %s sink batch %u, smaller than batch packet size %u, room in current batch, encode %s into batch\n", rb_rg_tracer_sink_name(sink_data), sink_data->batch.sequence, RG_BATCH_PACKET_SIZE, rb_rg_event_type_to_str(event));
 #endif
     // Append a command to the current batch
     rg_encode_into_batch(context->buf, buflen, &sink_data->batch);
@@ -509,9 +528,9 @@ static int rb_rg_batched_sink(rg_context_t *context, void *userdata, const rg_ev
 #ifdef RB_RG_DEBUG
     if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_DEBUG && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST)) {
       if (!event) {
-        printf("[Raygun APM] UDP sink batch %u, null event, finalize batch\n", sink_data->batch.sequence);
+        printf("[Raygun APM] %s sink batch %u, null event, finalize batch\n", rb_rg_tracer_sink_name(sink_data), sink_data->batch.sequence);
       } else {
-        printf("[Raygun APM] UDP sink batch %u, smaller than batch packet size %u, room in a new batch so dispatch current, encode %s into batch\n", sink_data->batch.sequence, RG_BATCH_PACKET_SIZE, rb_rg_event_type_to_str(event));
+        printf("[Raygun APM] %s sink batch %u, smaller than batch packet size %u, room in a new batch so dispatch current, encode %s into batch\n", rb_rg_tracer_sink_name(sink_data), sink_data->batch.sequence, RG_BATCH_PACKET_SIZE, rb_rg_event_type_to_str(event));
       }
     }
 #endif
@@ -525,20 +544,20 @@ static int rb_rg_batched_sink(rg_context_t *context, void *userdata, const rg_ev
     if (UNLIKELY(retval == 0))
     {
       if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_DEBUG && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST)) {
-        printf("[Raygun APM] UDP sink batch %u overflow wanted:%i used:%i unused:%i!\n", sink_data->batch.sequence, buflen, bipbuf_used(sink_data->ringbuf.bipbuf), bipbuf_unused(sink_data->ringbuf.bipbuf));
+        printf("[Raygun APM] %s sink batch %u overflow wanted:%i used:%i unused:%i!\n", rb_rg_tracer_sink_name(sink_data), sink_data->batch.sequence, buflen, bipbuf_used(sink_data->ringbuf.bipbuf), bipbuf_unused(sink_data->ringbuf.bipbuf));
         assert(retval == 0);
       }
     } else
     {
       if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_DEBUG && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST))
-        printf("[Raygun APM] UDP sink batch %u queued:%i used:%i unused:%i\n", sink_data->batch.sequence, buflen, bipbuf_used(sink_data->ringbuf.bipbuf), bipbuf_unused(sink_data->ringbuf.bipbuf));
+        printf("[Raygun APM] %s sink batch %u queued:%i used:%i unused:%i\n", rb_rg_tracer_sink_name(sink_data), sink_data->batch.sequence, buflen, bipbuf_used(sink_data->ringbuf.bipbuf), bipbuf_unused(sink_data->ringbuf.bipbuf));
     }
 #endif
     // Reset the batch back to 0 batch count, retain sequence number
     rb_rg_spawn_new_batch(sink_data);
 #ifdef RB_RG_DEBUG
       if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_DEBUG && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST))
-        printf("[Raygun APM] UDP sink - reset batch\n");
+        printf("[Raygun APM] %s sink - reset batch\n", rb_rg_tracer_sink_name(sink_data));
 #endif
     // encode in batch
     if (event) {
@@ -577,11 +596,11 @@ static int rb_rg_batched_sink(rg_context_t *context, void *userdata, const rg_ev
     if (retval == 0)
     {
       if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_DEBUG && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST))
-        printf("[Raygun APM] UDP sink batch %u overflow wanted:%i used:%i unused:%i!\n", sink_data->batch.sequence, buflen, bipbuf_used(sink_data->ringbuf.bipbuf), bipbuf_unused(sink_data->ringbuf.bipbuf));
+        printf("[Raygun APM] %s sink batch %u overflow wanted:%i used:%i unused:%i!\n", rb_rg_tracer_sink_name(sink_data), sink_data->batch.sequence, buflen, bipbuf_used(sink_data->ringbuf.bipbuf), bipbuf_unused(sink_data->ringbuf.bipbuf));
     } else
     {
       if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_DEBUG && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST))
-        printf("[Raygun APM] UDP sink batch %u queued:%i used:%i unused:%i\n", sink_data->batch.sequence, buflen, bipbuf_used(sink_data->ringbuf.bipbuf), bipbuf_unused(sink_data->ringbuf.bipbuf));
+        printf("[Raygun APM] %s sink batch %u queued:%i used:%i unused:%i\n", rb_rg_tracer_sink_name(sink_data), sink_data->batch.sequence, buflen, bipbuf_used(sink_data->ringbuf.bipbuf), bipbuf_unused(sink_data->ringbuf.bipbuf));
     }
 #endif
   }
@@ -598,6 +617,20 @@ static VALUE rb_rg_udp_sink_send(VALUE ptr)
 {
   rb_rg_sink_data_t *data = (rb_rg_sink_data_t *)ptr;
   return rb_funcall(data->sock, rb_rg_id_send, 4, data->payload, INT2NUM(0), data->host, data->port);
+}
+
+// Wrapped function call and this kind of isn't great that we need to invoke rb_funcall, but the Socket extension does not provide low level APIs and it would
+// be crazy trying to implement a low level TCP dispatcher from scratch that supports all platforms flawlessly and end up in a better place than Ruby.
+// The cost is neglible though as it's invoked async from a dispatcher thread though.
+//
+static VALUE rb_rg_tcp_sink_send(VALUE ptr)
+{
+  rb_rg_sink_data_t *data = (rb_rg_sink_data_t *)ptr;
+  if (NIL_P(data->sock)) {
+    printf("[Raygun APM] TCP socket disconnected %s:%d - not sending %ld bytes of profiler data\n", RSTRING_PTR(data->host), NUM2INT(data->port), RSTRING_LEN(data->payload));
+    return Qfalse;
+  }
+  return rb_funcall(data->sock, rb_rg_id_write, 1, data->payload);
 }
 
 // Force flush a batched sink with a special case NULL event
@@ -636,7 +669,7 @@ static void rb_rg_async_emit_methodinfos(const rb_rg_tracer_t *tracer) {
   // No need to emit anything if the methodinfo table is empty
   if (UNLIKELY(tracer->methodinfo->num_entries == 0)) return;
   // No need to emit anything if we're not using a transport oriented sink
-  if (UNLIKELY(!RTEST(tracer->sink_data.sock))) return;
+  if (UNLIKELY(!(tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP))) return;
 #ifdef RB_RG_DEBUG
     if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_INFO && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST)) {
       printf("[Raygun APM] Syncing the global whitelisted method table with the Agent\n");
@@ -655,8 +688,9 @@ static void rb_rg_async_emit_methodinfos(const rb_rg_tracer_t *tracer) {
 // 
 static VALUE rb_rg_timer_thread(void *ptr)
 {
+  int status = 0;
   rb_rg_sink_data_t *data = (rb_rg_sink_data_t *)ptr;
-  const rb_rg_tracer_t *tracer = data->tracer;
+  rb_rg_tracer_t *tracer = data->tracer;
   // XXX to get from tracer config, static default of PROTON_BATCH_IDLE_COUNTER=500 to start with
   struct timeval tv;
   tv.tv_sec = RG_TIMER_THREAD_TICK_INTERVAL;
@@ -672,6 +706,17 @@ static VALUE rb_rg_timer_thread(void *ptr)
       methodinfo_sync_ticks = 0;
     }
     methodinfo_sync_ticks++;
+    if (tracer->sink_data.type == RB_RG_TRACER_SINK_TCP && tracer->sink_data.sock == Qnil) {
+      tracer->sink_data.sock = rb_protect(rb_rg_tracer_initialise_tcp_socket, (VALUE)tracer, &status);
+      if (UNLIKELY(status)) {
+        rb_rg_log_silenced_error();
+        // Clearing error info to ignore the caught exception
+        rb_set_errinfo(Qnil);
+        printf("[Raygun APM] TCP socket %s:%d not yet connected in timer thread, reconnecting in %d seconds\n", RSTRING_PTR(tracer->sink_data.host), NUM2INT(tracer->sink_data.port), RG_SINK_THREAD_TICK_INTERVAL / 100000);
+      } else {
+        printf("[Raygun APM] TCP socket %s:%d connected in timer thread\n", RSTRING_PTR(tracer->sink_data.host), NUM2INT(tracer->sink_data.port));
+      }
+    }
   }
   return Qtrue;
 }
@@ -761,6 +806,7 @@ static VALUE rb_rg_udp_sink_thread(void *ptr)
 #ifdef RB_RG_DEBUG
         if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_ERROR && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST))
           printf("[Raygun APM] UDP thread failed to send\n");
+        rb_jump_tag(status);
 #endif
         rb_rg_log_silenced_error();
         // Clearing error info to ignore the caught exception
@@ -783,6 +829,100 @@ static VALUE rb_rg_udp_sink_thread(void *ptr)
 #ifdef RB_RG_DEBUG
       if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_ERROR && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST))
         printf("[Raygun APM] UDP queue empty, exiting\n");
+#endif
+    }
+  }
+  return Qtrue;
+}
+
+// The main sink thread that is responsible for driving TCP dispatch. This thread is the other end of the bipbuf (ring buffer)
+// and is the only consumer of it. The dispatch main loop balances sending as fast as possible when the buffer has data to send
+// but also periodically goes to sleep for up to 1s in order to not negatively impact CPU when the profiler isn't doing any work.
+//
+static VALUE rb_rg_tcp_sink_thread(void *ptr)
+{
+  int status = 0;
+  int bytes_to_send_on_wakeup = 0;
+  rg_short_t size;
+  rb_rg_sink_data_t *data = (rb_rg_sink_data_t *)ptr;
+  struct timeval tv;
+  tv.tv_sec = 0;
+  tv.tv_usec = RG_SINK_THREAD_TICK_INTERVAL;
+#ifdef RB_RG_DEBUG
+  const struct rb_rg_tracer_t *tracer = data->tracer;
+#endif
+
+  // data->running is set to false on profiler shutdown which terminates this main loop and allows this thread to exit
+  while(data->running || !bipbuf_is_empty(data->ringbuf.bipbuf))
+  {
+    bytes_to_send_on_wakeup = 0;
+
+    // On each wakeup try to flush the queue, if there's anything to flush
+    while(!bipbuf_is_empty(data->ringbuf.bipbuf))
+    {
+      // Peek into the bipbuf to determine the next expected message size to send
+      size = rg_ringbuf_next_message_size(&data->ringbuf);
+      bytes_to_send_on_wakeup += size;
+
+      // On empty next buffered message, terminate this UDP thread
+      if (UNLIKELY(!(size > 0))) {
+        data->running = false;
+#ifdef RB_RG_DEBUG
+        if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_ERROR && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST))
+          printf("[Raygun APM] TCP thread terminating - next buffered message is empty\n");
+#endif
+        break;
+      }
+      // As above, but moves the ring buffer cursor
+      unsigned char *ptr = bipbuf_poll(data->ringbuf.bipbuf, (unsigned int)size);
+      if (UNLIKELY(!ptr)) {
+        data->running = false;
+#ifdef RB_RG_DEBUG
+        if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_ERROR && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST))
+          printf("[Raygun APM] TCP thread terminating - NULL message on polling buffer\n");
+#endif
+        break;
+      }
+
+      // Reset and fill the pre-allocated Ruby String buffer. This object is always considered as "marked" (in use) by the GC, won't be recycled until the profiler
+      // shuts down and this pattern saves on Ruby heap allocation overhead per UDP packet (batch or exceptional oversized) sent
+      rb_str_set_len(data->payload, 0);
+      rb_str_buf_cat(data->payload, (const char *)ptr, size);
+
+      // Call the actual TCP send function with rb_protect, which prevents raising a runtime exception - we catch the status and reset Ruby error info to NULL to prevent
+      // an exception raised for the caught exception (if any). We increment the failed_sends telemetry counter which can be inspected when the PROTON_DIAGNOSTICS env
+      // var is set.
+      //
+      rb_protect(rb_rg_tcp_sink_send, (VALUE)data, &status);
+      if (UNLIKELY(status)) {
+#ifdef RB_RG_DEBUG
+        if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_ERROR && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST))
+          printf("[Raygun APM] TCP thread failed to send\n");
+        rb_jump_tag(status);
+#endif
+        rb_rg_log_silenced_error();
+        data->sock = Qnil;
+        printf("[Raygun APM] TCP socket disconnected %s:%d , reconnecting in %d seconds\n", RSTRING_PTR(data->host), NUM2INT(data->port), RG_SINK_THREAD_TICK_INTERVAL / 100000);
+        // Clearing error info to ignore the caught exception
+        rb_set_errinfo(Qnil);
+        data->failed_sends++;
+      } else {
+        data->bytes_sent += size;
+#ifdef RB_RG_DEBUG
+      if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_DEBUG && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST))
+        printf("[Raygun APM] TCP sent:%i used:%i unused:%i\n", size, bipbuf_used(data->ringbuf.bipbuf), bipbuf_unused(data->ringbuf.bipbuf));
+#endif
+      }
+    }
+    if (LIKELY(data->running))
+    {
+      // While not instructed to exit, take a small pause to not burn CPU unecessary
+      rb_rg_thread_wait_for(tv);
+    } else
+    {
+#ifdef RB_RG_DEBUG
+      if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_ERROR && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST))
+        printf("[Raygun APM] TCP queue empty, exiting\n");
 #endif
     }
   }
@@ -1731,11 +1871,15 @@ static VALUE rb_rg_tracer_callback_sink_set(VALUE obj, VALUE callback)
     rb_raise(rb_eRaygunFatal, "Expected a sink callback that accepts exactly 1 argument");
   }
 
+  if (tracer->sink_data.type != RB_RG_TRACER_SINK_NONE)
+    rb_raise(rb_eRaygunFatal, "Only one profiler sink can be set!");
+
   // Inform the encoder context of the Proc aware callback sink
   tracer->context->sink = rb_rg_callback_sink;
   // Set the Proc on sink data - the GC callbacks on the Tracer knows how to handle this properly so the Proc does not get collected before it's
   // not needed anymore
   tracer->sink_data.callback = callback;
+  tracer->sink_data.type = RB_RG_TRACER_SINK_CALLBACK;
   return callback;
 }
 
@@ -1759,10 +1903,23 @@ static VALUE rb_rg_tracer_create_udp_sink_thread(VALUE data)
   return rb_thread_create(rb_rg_udp_sink_thread, (void *)sink_data);
 }
 
+// An intermediate function that is wrapped in rb_protect and responsible for spawning the TCP emission thread
+static VALUE rb_rg_tracer_create_tcp_sink_thread(VALUE data)
+{
+  rb_rg_sink_data_t *sink_data = (rb_rg_sink_data_t *)data;
+  return rb_thread_create(rb_rg_tcp_sink_thread, (void *)sink_data);
+}
+
 // Sets the name of the UDP sink thread thread so that it's visible in GDB debug contexts etc. and easier to reason about which thread is which
 static VALUE rb_rg_tracer_udp_sink_thread_set_name(VALUE thread)
 {
   return rb_funcall(thread, rb_rg_id_name_equals, 1, rb_str_new2("raygun udp sink"));
+}
+
+// Sets the name of the TCP sink thread thread so that it's visible in GDB debug contexts etc. and easier to reason about which thread is which
+static VALUE rb_rg_tracer_tcp_sink_thread_set_name(VALUE thread)
+{
+  return rb_funcall(thread, rb_rg_id_name_equals, 1, rb_str_new2("raygun tcp sink"));
 }
 
 // Enables the UDP sink for the tracer. The current primary production sink and this function also spawns 1 thread:
@@ -1828,7 +1985,10 @@ static VALUE rb_rg_tracer_udp_sink_set(int argc, VALUE* argv, VALUE obj)
     rb_raise(rb_eRaygunFatal, "Expected the UDP receive buffer size to be a numerical value");
   }
 
-  // Inform the encoder to use the UDP sink function
+  if (tracer->sink_data.type != RB_RG_TRACER_SINK_NONE)
+    rb_raise(rb_eRaygunFatal, "Only one profiler sink can be set!");
+
+  // Inform the encoder to use the batched sink function
   tracer->context->sink = rb_rg_batched_sink;
 
   // Set the relevant supporting data for this sink on the sink_data member. Integrates properly with the GC.
@@ -1882,7 +2042,121 @@ static VALUE rb_rg_tracer_udp_sink_set(int argc, VALUE* argv, VALUE obj)
       printf("[Raygun APM] UDP dispatch thread started\n");
     }
 #endif
+  tracer->sink_data.type = RB_RG_TRACER_SINK_UDP;
   return socket;
+}
+
+static VALUE rb_rg_tracer_initialise_tcp_socket(VALUE obj)
+{
+  rb_rg_tracer_t *tracer= (rb_rg_tracer_t *)obj;
+  return rb_funcall(rb_rg_cTcpSocket, rb_rg_id_new, 2, tracer->sink_data.host, tracer->sink_data.port);
+}
+
+// Enables the TCP sink for the tracer. The current secondary production sink and this function also spawns 1 thread:
+// * TCP dispatch thread
+//
+static VALUE rb_rg_tracer_tcp_sink_set(int argc, VALUE* argv, VALUE obj)
+{
+  int status = 0;
+  VALUE kwargs, host, port;
+  rb_rg_get_tracer(obj);
+
+  // Scans and validates various supported keyword arguments
+  rb_scan_args(argc, argv, ":", &kwargs);
+  if (NIL_P(kwargs)) kwargs = rb_hash_new();
+
+  // Validates the host argument
+  host = rb_hash_aref(kwargs, ID2SYM(rb_rg_id_host));
+  if (!RB_TYPE_P(host, T_STRING)) {
+#ifdef RB_RG_DEBUG
+    if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_ERROR && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST)) {
+      printf("[Raygun APM] Expected the UDP socket hostname to be a string\n");
+    }
+#endif
+    rb_raise(rb_eRaygunFatal, "Expected the TCP socket hostname to be a string");
+  }
+
+  // Validates the port argument
+  port = rb_hash_aref(kwargs, ID2SYM(rb_rg_id_port));
+  if (!RB_TYPE_P(port, T_FIXNUM)) {
+#ifdef RB_RG_DEBUG
+    if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_ERROR && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST)) {
+      printf("[Raygun APM] Expected the UDP socket port to be a numerical value\n");
+    }
+#endif
+    rb_raise(rb_eRaygunFatal, "Expected the TCP socket port to be a numerical value");
+  }
+
+
+  if (tracer->sink_data.type != RB_RG_TRACER_SINK_NONE)
+    rb_raise(rb_eRaygunFatal, "Only one profiler sink can be set!");
+
+  // Inform the encoder to use the bathed sink function
+  tracer->context->sink = rb_rg_batched_sink;
+
+  // Set the relevant supporting data for this sink on the sink_data member. Integrates properly with the GC.
+  tracer->sink_data.tracer = tracer;
+  tracer->sink_data.sock = Qnil;
+  // Set host and port for reconnect (or allow us to support this in the dispatcher thread)
+  tracer->sink_data.host = host;
+  tracer->sink_data.port = port;
+  tracer->sink_data.receive_buffer_size = 0;
+  // Allocates the ring buffer used for communication between the encoder and the TCP dispatch thread to completely decouple the tracer
+  // from the network in the hot path of any other executing thread.
+  tracer->sink_data.ringbuf.bipbuf = bipbuf_new(RG_RINGBUF_SIZE);
+  if(!tracer->sink_data.ringbuf.bipbuf) {
+#ifdef RB_RG_DEBUG
+    if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_ERROR && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST)) {
+      printf("[Raygun APM] Could not allocate bipbuf\n");
+    }
+#endif
+    rb_raise(rb_eRaygunFatal, "Could not allocate bipbuf");
+  }
+
+  // Pre-allocates a Ruby String object of a predefined max packet size and let the GC know we're using it to not have it recycled
+  tracer->sink_data.payload = rb_str_buf_new(RG_BATCH_PACKET_SIZE);
+  rb_gc_register_address(&tracer->sink_data.payload);
+  // Set the sink status to running
+  tracer->sink_data.running = true;
+
+  // Spin up the UDP dispatch thread safely - shutdown the tracer if that failed
+  tracer->sink_thread = rb_protect(rb_rg_tracer_create_tcp_sink_thread, (VALUE)&tracer->sink_data, &status);
+  if (UNLIKELY(status)) {
+    // Clearing error info to ignore the caught exception
+    rb_set_errinfo(Qnil);
+    // Fatal error if we cannot start the UDP sender thread
+#ifdef RB_RG_DEBUG
+    if (UNLIKELY(tracer->loglevel >= RB_RG_TRACER_LOG_ERROR && tracer->loglevel < RB_RG_TRACER_LOG_BLACKLIST)) {
+      printf("[Raygun APM] Could not start the UDP sink dispatch thread\n");
+    }
+#endif
+    rb_raise(rb_eRaygunFatal, "Could not start the TCP sink dispatch thread");
+  }
+  // Attempt to set the name for the TCP dispatch thread, no biggy if we can't
+  rb_protect(rb_rg_tracer_tcp_sink_thread_set_name, tracer->sink_thread, &status);
+  if (UNLIKELY(status)) {
+    // Clearing error info to ignore the caught exception
+    rb_set_errinfo(Qnil);
+    // Not fatal if we cannot set the thread name, continue
+  }
+#ifdef RB_RG_DEBUG
+    if (UNLIKELY(tracer->loglevel == RB_RG_TRACER_LOG_INFO)) {
+      printf("[Raygun APM] UDP dispatch thread started\n");
+    }
+#endif
+  tracer->sink_data.type = RB_RG_TRACER_SINK_TCP;
+
+  // attempt to connect on startup, but fail fast
+  tracer->sink_data.sock = rb_protect(rb_rg_tracer_initialise_tcp_socket, (VALUE)tracer, &status);
+  if (UNLIKELY(status)) {
+    rb_rg_log_silenced_error();
+    printf("[Raygun APM] TCP socket %s:%d not yet connected, reconnecting in %d seconds\n", RSTRING_PTR(tracer->sink_data.host), NUM2INT(tracer->sink_data.port), RG_SINK_THREAD_TICK_INTERVAL / 100000);
+    // Clearing error info to ignore the caught exception
+    rb_set_errinfo(Qnil);
+  } else {
+    printf("[Raygun APM] TCP socket %s:%d connected without timer thread\n", RSTRING_PTR(tracer->sink_data.host), NUM2INT(tracer->sink_data.port));
+  }
+  return Qtrue;
 }
 
 // The custom allocator function for the Tracer instance
@@ -1904,6 +2178,8 @@ static VALUE rb_rg_tracer_alloc(VALUE obj)
 
   // Default to the production environment (much cheaper method ID hashing)
   tracer->environment = RB_RG_TRACER_ENV_PRODUCTION;
+  // Default to no sink set
+  tracer->sink_data.type = RB_RG_TRACER_SINK_NONE;
   // Default to not wanting to debug the blacklist
   tracer->debug_blacklist = false;
   // Initializes the symbol table for tracking method info discovered during tracing.
@@ -2477,7 +2753,7 @@ static VALUE rb_rg_tracer_diagnostics(VALUE obj)
   printf("[Pointers] encoder context: %p threadsinfo: %p methodinfo: %p sink_data: %p batch: %p bipbuf: %p\n", (void *)tracer->context, (void *)tracer->threadsinfo, (void *)tracer->methodinfo, (void *)&tracer->sink_data, (void *)&tracer->sink_data.batch, (void *)tracer->sink_data.ringbuf.bipbuf);
   printf("[Execution context] Raygun thread: %d Ruby current thread: %p thread group: %ld\n", th->tid, (void *)thread, rb_rg_thread_group(GET_THREAD()));
   printf("[Ruby threads] timer thread: %p sink thread: %p\n", (void *)tracer->timer_thread, (void *)tracer->sink_thread);
-  if (NIL_P(tracer->sink_data.payload)) {
+  if (tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP) {
     printf("[Encoder] batched: %lu raw: %lu flushed: %lu resets: %lu batches: %lu\n", tracer->sink_data.encoded_batched, tracer->sink_data.encoded_raw, tracer->sink_data.flushed, tracer->sink_data.resets, tracer->sink_data.batches);
     printf("[Dispatch] batch count: %d sequence: %d batch pid: %d sink running: %d bytes sent: %lu failed sends: %lu jittered_sends: %lu\n", tracer->sink_data.batch.count, tracer->sink_data.batch.length, tracer->sink_data.batch.pid, tracer->sink_data.running, tracer->sink_data.bytes_sent, tracer->sink_data.failed_sends, tracer->sink_data.jittered_sends);
     printf("[Buffer] size: %d max used: %lu used: %d unused: %d\n", bipbuf_size(tracer->sink_data.ringbuf.bipbuf), tracer->sink_data.max_buf_used, bipbuf_used(tracer->sink_data.ringbuf.bipbuf), bipbuf_unused(tracer->sink_data.ringbuf.bipbuf));
@@ -2577,9 +2853,13 @@ void _init_raygun_tracer()
   rb_rg_id_receive_buffer_size = rb_intern("receive_buffer_size");
   rb_rg_id_exception_correlation_ivar = rb_intern("@__raygun_correlation_id");
   rb_rg_id_message = rb_intern("message");
+  rb_rg_id_write = rb_intern("write");
+  rb_rg_id_tcp_socket = rb_intern("TCPSocket");
+  rb_rg_id_new = rb_intern("new");
 
   // do the thread group class name lookup ahead of time so we don't incur runtime overhead for this
   rb_rg_cThGroup = rb_const_get(rb_cObject, rb_rg_id_th_group);
+  rb_rg_cTcpSocket = rb_const_get(rb_cObject, rb_rg_id_tcp_socket);
 
   // Defines the tracer instance which everything else attaches to
   rb_cRaygunTracer = rb_define_class_under(rb_mRaygunApm, "Tracer", rb_cObject);
@@ -2610,7 +2890,14 @@ void _init_raygun_tracer()
   rg_tracer_const("METHOD_SOURCE_JIT_COMPILATION", RG_METHOD_SOURCE_JIT_COMPILATION);
   rg_tracer_const("METHOD_SOURCE_GARBAGE_COLLECTION", RG_METHOD_SOURCE_GARBAGE_COLLECTION);
 
+  // For network transports
   rg_tracer_const("BATCH_PACKET_SIZE", RG_BATCH_PACKET_SIZE);
+
+  // Sinks
+  rg_tracer_const("SINK_NONE", RB_RG_TRACER_SINK_NONE);
+  rg_tracer_const("SINK_UDP", RB_RG_TRACER_SINK_UDP);
+  rg_tracer_const("SINK_TCP", RB_RG_TRACER_SINK_TCP);
+  rg_tracer_const("SINK_CALLBACK", RB_RG_TRACER_SINK_CALLBACK);
 
 #ifdef RB_RG_DEBUG
   rb_define_const(rb_cRaygunTracer, "DEBUG_BUILD", Qtrue);
@@ -2657,6 +2944,7 @@ void _init_raygun_tracer()
   rb_define_method(rb_cRaygunTracer, "whitelisted?", rb_rg_tracer_whitelisted_p, 3);
 
   rb_define_method(rb_cRaygunTracer, "udp_sink", rb_rg_tracer_udp_sink_set, -1);
+  rb_define_method(rb_cRaygunTracer, "tcp_sink", rb_rg_tracer_tcp_sink_set, -1);
   rb_define_method(rb_cRaygunTracer, "now", rb_rg_tracer_now, 0);
   rb_define_method(rb_cRaygunTracer, "noop!", rb_rg_tracer_noop_bang, 0);
 

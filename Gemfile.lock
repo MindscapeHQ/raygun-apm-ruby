@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    raygun-apm (1.1.7)
+    raygun-apm (1.1.8)
 
 GEM
   remote: https://rubygems.org/

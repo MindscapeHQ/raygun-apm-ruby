@@ -852,6 +852,24 @@ class Raygun::ApmTest < Raygun::Test
     assert_equal methodinfo[:function_id], events[4][:function_id]
   end
 
+  def test_only_one_sink_allowed
+    tracer = Raygun::Apm::Tracer.new
+    tracer.callback_sink = Proc.new do |event|
+    end
+
+    assert_raises Raygun::Apm::FatalError do
+      tracer.udp_sink!
+    end
+
+    tracer = Raygun::Apm::Tracer.new
+    tracer.udp_sink!
+
+    assert_raises Raygun::Apm::FatalError do
+      tracer.callback_sink = Proc.new do |event|
+      end
+    end
+  end
+
   def test_extend_blacklist
     Raygun::Apm::Blacklist.extend_with %w(foo)
     Raygun::Apm::Blacklist.extend_with %w(bar)
@@ -934,6 +952,10 @@ class Raygun::ApmTest < Raygun::Test
     test_tracer_test_method
     tracer.end_trace
     tracer.process_ended
+
+    thread_names = Thread.list.map(&:name)
+    assert thread_names.include?("raygun udp sink")
+    assert thread_names.include?("raygun timer")
     skip "assert udp output"
   end
 
@@ -1047,6 +1069,20 @@ class Raygun::ApmTest < Raygun::Test
       config.env["PROTON_UDP_PORT"] = "6000"
       assert_equal "8.8.8.8", config.proton_udp_host
       assert_equal 6000, config.proton_udp_port
+    end
+
+    def test_tcp_defaults
+      config = Raygun::Apm::Config.new({})
+      assert_equal '127.0.0.1', config.proton_tcp_host
+      assert_equal 2799, config.proton_tcp_port
+    end
+
+    def test_tcp_host_port_configs
+      config = Raygun::Apm::Config.new({})
+      config.env["PROTON_TCP_HOST"] = "8.8.8.8"
+      config.env["PROTON_TCP_PORT"] = "6000"
+      assert_equal "8.8.8.8", config.proton_tcp_host
+      assert_equal 6000, config.proton_tcp_port
     end
 
     def test_loglevel
