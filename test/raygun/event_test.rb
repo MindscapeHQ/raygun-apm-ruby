@@ -483,4 +483,22 @@ class Raygun::EventTest < Raygun::Test
 
     assert tracer.end_trace
   end
+
+  def test_kitcheck_sql_max_batch_size_corruption
+    tracer = Raygun::Apm::Tracer.new
+    tracer.udp_sink!
+    10000.times do |i|
+      event = Raygun::Apm::Event::Sql.new
+      event[:pid] = 39441
+      event[:tid] = 0
+      event[:timestamp] = 1547463470598444
+      event[:provider] = 'postgres' # 05 0800 706F737467726573
+      event[:host] = 'localhost' # 05 0900 6C6F63616C686F7374
+      event[:database] = 'rails' # 05 0500 7261696C73
+      event[:query] = "a" * i
+      event[:duration] = 1000
+      tracer.emit(event)
+      refute tracer.noop?, "failed at iteration #{i}"
+    end
+  end
 end

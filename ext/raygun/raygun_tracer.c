@@ -568,7 +568,7 @@ static int rb_rg_batched_sink(rg_context_t *context, void *userdata, const rg_ev
   } else
   {
     // buflen exceeds RG_MAX_BATCH_PACKET_SIZE, send as-is - best effort delivery depending on transport, probably :boom: for UDP, likely delivered for TCP
-    if (buflen > RG_MAX_BATCH_PACKET_SIZE) {
+    if (buflen >= RG_MAX_BATCH_PACKET_SIZE - 2) {
       // make no attempt to wrap it into a batch command
       retval = bipbuf_offer(sink_data->ringbuf.bipbuf, (unsigned char*)context->buf, (int)(buflen));
       // Reset the batch back to 0 batch count, retain sequence number
@@ -2784,6 +2784,13 @@ static VALUE rb_rg_tracer_noop_bang(VALUE obj)
   return Qtrue;
 }
 
+static VALUE rb_rg_tracer_noop_p(VALUE obj)
+{
+  rb_rg_get_tracer(obj);
+  if (tracer->noop) return Qtrue;
+  return Qfalse;
+}
+
 // For tests only, since https://github.com/ruby/ruby/pull/2638 no public API to retrieve memory address of an object
 static VALUE rb_rg_tracer_memory_address(VALUE tracer, VALUE obj)
 {
@@ -2947,6 +2954,7 @@ void _init_raygun_tracer()
   rb_define_method(rb_cRaygunTracer, "tcp_sink", rb_rg_tracer_tcp_sink_set, -1);
   rb_define_method(rb_cRaygunTracer, "now", rb_rg_tracer_now, 0);
   rb_define_method(rb_cRaygunTracer, "noop!", rb_rg_tracer_noop_bang, 0);
+  rb_define_method(rb_cRaygunTracer, "noop?", rb_rg_tracer_noop_p, 0);
 
   // For testing
   rb_define_method(rb_cRaygunTracer, "memory_address", rb_rg_tracer_memory_address, 1);
