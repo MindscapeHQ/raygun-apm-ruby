@@ -1,5 +1,9 @@
 = Changelog
 
+== 1.1.9 (Jan 13, 2022)
+
+* Fix static batch buffer overrun by 1 byte for SQL query specific events that were exactly 4033 bytes big
+
 == 1.1.8 (Jan 3, 2022)
 
 * Support TCP mode for dispatch
