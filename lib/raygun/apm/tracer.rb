@@ -4,8 +4,14 @@ require 'rbconfig'
 module Raygun
   module Apm
     class Tracer
+      @__mutex = Mutex.new
+
       @__pids ||= {}
       class << self
+        def synchronize(&block)
+          @__mutex.synchronize { block.call }
+        end
+
         def instance
           @__pids[Process.pid]
         end
