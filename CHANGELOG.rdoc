@@ -1,5 +1,10 @@
 = Changelog
 
+== 1.1.10 (Jan 23, 2022)
+
+* Handle the filter case where a transient thread has the same thread group as the trace context thread
+* Expose a Apm::Tracer.synchronize{} API with a single shared mutex instance for the profiler to use for init purposes in shims
+
 == 1.1.9 (Jan 13, 2022)
 
 * Fix static batch buffer overrun by 1 byte for SQL query specific events that were exactly 4033 bytes big

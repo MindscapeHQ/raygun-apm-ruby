@@ -28,10 +28,12 @@ static ID rb_rg_id_send,
     rb_rg_id_message,
     rb_rg_id_write,
     rb_rg_id_tcp_socket,
-    rb_rg_id_new;
+    rb_rg_id_new,
+    rb_rg_id_default;
 
 static VALUE rb_rg_cThGroup;
 static VALUE rb_rg_cTcpSocket;
+static VALUE rb_rg_DefaultThreadGroup;
 
 // The main typed data struct that helps to inform the VM (mostly the GC) on how to handle a wrapped structure
 // References https://github.com/ruby/ruby/blob/master/doc/extension.rdoc#encapsulate-c-data-into-a-ruby-object-
@@ -1579,7 +1581,7 @@ static inline rg_function_id_t rb_rg_stack_peek(rg_thread_t *thread)
 //
 static void rb_rg_tracing_hook_i(VALUE tpval, void *data)
 {
-  VALUE exception, namespace, thread;
+  VALUE exception, namespace, thread, thgroup;
   st_data_t entry;
   st_index_t method;
 #ifdef RB_RG_EMIT_ARGUMENTS
@@ -1619,7 +1621,8 @@ static void rb_rg_tracing_hook_i(VALUE tpval, void *data)
   // OR any threads that has the same Thread Group assigned, meaning they were spawned by the thread that is pinned to the
   // trace context.
   if (UNLIKELY(thread != trace_context->thread)) {
-    if (LIKELY(rb_rg_thread_group(GET_THREAD()) == trace_context->thgroup)) {
+    thgroup = rb_rg_thread_group(GET_THREAD());
+    if (LIKELY(thgroup != rb_rg_DefaultThreadGroup && thgroup == trace_context->thgroup)) {
       // Let tid be that of the current executing thread as it's part of the trace context's thread
       // group and thus it was spawned within the trace context transaction boundaries and thus we
       // care about instrumenting it
@@ -2349,6 +2352,7 @@ static VALUE rb_rg_tracer_alloc(VALUE obj)
       printf("[Raygun APM] timer thread started\n");
     }
 #endif
+
   // Returns the wrapped Ruby object
   return TypedData_Wrap_Struct(obj, &rb_rg_tracer_type, tracer);
 }
@@ -2863,10 +2867,12 @@ void _init_raygun_tracer()
   rb_rg_id_write = rb_intern("write");
   rb_rg_id_tcp_socket = rb_intern("TCPSocket");
   rb_rg_id_new = rb_intern("new");
+  rb_rg_id_default = rb_intern("Default");
 
   // do the thread group class name lookup ahead of time so we don't incur runtime overhead for this
   rb_rg_cThGroup = rb_const_get(rb_cObject, rb_rg_id_th_group);
   rb_rg_cTcpSocket = rb_const_get(rb_cObject, rb_rg_id_tcp_socket);
+  rb_rg_DefaultThreadGroup = rb_const_get(rb_rg_cThGroup, rb_rg_id_default);
 
   // Defines the tracer instance which everything else attaches to
   rb_cRaygunTracer = rb_define_class_under(rb_mRaygunApm, "Tracer", rb_cObject);
