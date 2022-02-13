@@ -70,6 +70,9 @@ module Raygun
       config_var 'PROTON_UDP_PORT', as: Integer, default: UDP_SINK_PORT
       config_var 'PROTON_TCP_HOST', as: String, default: TCP_SINK_HOST
       config_var 'PROTON_TCP_PORT', as: Integer, default: TCP_SINK_PORT
+      ## Conditional hooks
+      config_var 'PROTON_HOOK_REDIS', as: :boolean, default: 'True'
+      config_var 'PROTON_HOOK_INTERNALS', as: :boolean, default: 'True'
 
       def proton_udp_host
         if proton_use_multicast == 'True'

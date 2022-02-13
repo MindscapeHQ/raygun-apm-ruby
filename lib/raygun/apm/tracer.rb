@@ -32,6 +32,7 @@ module Raygun
         initialize_blacklist
         register_known_library_paths
         run_agent_connectivity_diagnostics
+        require_hooks
         ObjectSpace.define_finalizer(self, proc{ disable_tracepoints })
       # Any fails here is kamikaze for the tracer
       rescue => e
@@ -108,6 +109,22 @@ module Raygun
       def run_agent_connectivity_diagnostics
         check = Raygun::Apm::Diagnostics.new
         check.verify_agent(self)
+      end
+
+      def require_hooks
+        require "raygun/apm/hooks/internals" if @config.proton_hook_internals
+        require "raygun/apm/hooks/net_http"
+        # conditionally required - may not be bundled
+        conditional_hooks = %w(httpclient excon mongodb)
+        conditional_hooks.each do |hook|
+          begin
+            require "raygun/apm/hooks/#{hook}"
+          rescue LoadError
+          end
+        end
+        if @config.proton_hook_redis
+          require "raygun/apm/hooks/redis" if defined?(Redis::Client)
+        end
       end
     end
   end
