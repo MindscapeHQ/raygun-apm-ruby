@@ -41,5 +41,5 @@ module Raygun
 end
 
 Mongo::Operation.constants.each do |operation|
-  Mongo::Operation.const_get(operation).prepend(Raygun::Apm::Hooks::MongoDB) rescue nil
+  Raygun::Apm::Tracer.patch(Mongo::Operation.const_get(operation), Raygun::Apm::Hooks::MongoDB) rescue nil
 end

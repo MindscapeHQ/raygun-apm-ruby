@@ -19,6 +19,10 @@ module Raygun
         def instance=(tracer)
           @__pids[Process.pid] = tracer
         end
+
+        def patch(concern, hook)
+          concern.prepend(hook) unless concern.ancestors.include?(hook)
+        end
       end
 
       attr_accessor :config
