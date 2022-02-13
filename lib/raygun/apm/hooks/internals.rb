@@ -88,8 +88,8 @@ module Raygun
   end
 end
 
-Object.prepend Raygun::Apm::Hooks::Object
-IO.prepend Raygun::Apm::Hooks::IO
-Random.prepend Raygun::Apm::Hooks::Random
-Signal.prepend Raygun::Apm::Hooks::Signal
-Thread::Mutex.prepend Raygun::Apm::Hooks::Mutex
+Raygun::Apm::Tracer.patch(Object, Raygun::Apm::Hooks::Object)
+Raygun::Apm::Tracer.patch(IO, Raygun::Apm::Hooks::IO)
+Raygun::Apm::Tracer.patch(Random, Raygun::Apm::Hooks::Random)
+Raygun::Apm::Tracer.patch(Signal, Raygun::Apm::Hooks::Signal)
+Raygun::Apm::Tracer.patch(Thread::Mutex, Raygun::Apm::Hooks::Mutex)

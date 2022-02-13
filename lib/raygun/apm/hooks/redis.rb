@@ -43,4 +43,4 @@ module Raygun
   end
 end
 
-::Redis::Client.prepend(Raygun::Apm::Hooks::Redis)
+Raygun::Apm::Tracer.patch(::Redis::Client, Raygun::Apm::Hooks::Redis)

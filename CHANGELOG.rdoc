@@ -1,5 +1,10 @@
 = Changelog
 
+== 1.1.11 (Feb 13, 2022)
+
+* Implement conditional hooks loading to facilitate debugging
+* Guard against multiple prepends of tracer hooks
+
 == 1.1.10 (Jan 23, 2022)
 
 * Handle the filter case where a transient thread has the same thread group as the trace context thread

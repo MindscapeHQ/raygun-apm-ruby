@@ -33,4 +33,4 @@ module Raygun
   end
 end
 
-Excon::Connection.prepend(Raygun::Apm::Hooks::Excon)
+Raygun::Apm::Tracer.patch(Excon::Connection, Raygun::Apm::Hooks::Excon)

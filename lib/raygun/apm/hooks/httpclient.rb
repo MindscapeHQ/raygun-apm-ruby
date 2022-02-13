@@ -40,4 +40,4 @@ module Raygun
   end
 end
 
-HTTPClient.prepend(Raygun::Apm::Hooks::HTTPClient)
+Raygun::Apm::Tracer.patch(HTTPClient, Raygun::Apm::Hooks::HTTPClient)

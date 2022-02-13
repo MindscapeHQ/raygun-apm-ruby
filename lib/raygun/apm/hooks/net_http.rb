@@ -41,4 +41,4 @@ module Raygun
   end
 end
 
-::Net::HTTP.prepend(Raygun::Apm::Hooks::Net::HTTP)
+Raygun::Apm::Tracer.patch(::Net::HTTP, Raygun::Apm::Hooks::Net::HTTP)
