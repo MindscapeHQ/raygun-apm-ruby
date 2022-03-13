@@ -23,6 +23,7 @@ append_cflags '-Werror=switch'
 append_cflags '-std=c99'
 append_cflags '-fdeclspec'
 append_cflags '-fms-extensions'
+append_cflags '-ggdb3'
 # Enables additional flags, stack protection and debug symbols
 if ENV['DEBUG']
   have_library 'ssp'
