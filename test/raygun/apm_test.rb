@@ -741,6 +741,19 @@ class Raygun::ApmTest < Raygun::Test
     pp []
     tracer.end_trace
 
+  if RUBY_VERSION >= "3.1"
+    expected_events = [
+      Raygun::Apm::Event::ProcessFrequency,
+      Raygun::Apm::Event::BeginTransaction,
+      Raygun::Apm::Event::Methodinfo,
+      Raygun::Apm::Event::Begin,
+      Raygun::Apm::Event::End,
+      Raygun::Apm::Event::Methodinfo,
+      Raygun::Apm::Event::Begin,
+      Raygun::Apm::Event::End,
+      Raygun::Apm::Event::EndTransaction,
+    ]
+  else
     expected_events = [
       Raygun::Apm::Event::ProcessFrequency,
       Raygun::Apm::Event::BeginTransaction,
@@ -749,11 +762,16 @@ class Raygun::ApmTest < Raygun::Test
       Raygun::Apm::Event::End,
       Raygun::Apm::Event::EndTransaction,
     ]
+  end
 
     assert_equal expected_events, events.map{|e| e.class}
     methodinfo = events[2]
     assert_equal 'PP', methodinfo[:class_name]
+  if RUBY_VERSION >= "3.1"
+    assert_equal "width_for", methodinfo[:method_name]
+  else
     assert_equal "pp", methodinfo[:method_name]
+  end
     assert_equal methodinfo[:function_id], events[3][:function_id]
     assert_equal methodinfo[:function_id], events[4][:function_id]
   ensure

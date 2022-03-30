@@ -36,7 +36,7 @@ Rake::TestTask.new(:test_build) do |t|
   t.test_files = FileList["test/raygun/**/*_test.rb"]
 end
 
-SUPPORTED_RUBY_VERSIONS = "2.5.0:2.6.0:2.7.0:3.0.0"
+SUPPORTED_RUBY_VERSIONS = "2.5.0:2.6.0:2.7.0:3.0.0:3.1.0"
 
 desc 'Beginnings of a task to trigger per ruby version and platform test suite runs on build'
 task 'test_at_build' do
@@ -86,6 +86,8 @@ task 'gem:native:darwin' do
     f.puts "rbconfig-universal-darwin-2.6.0: #{ENV["HOME"]}/.rubies/ruby-2.6.6/lib/ruby/2.6.0/#{RbConfig::CONFIG["sitearch"]}/rbconfig.rb"
     f.puts "rbconfig-universal-darwin-2.7.0: #{ENV["HOME"]}/.rubies/ruby-2.7.2/lib/ruby/2.7.0/#{RbConfig::CONFIG["sitearch"]}/rbconfig.rb"
     f.puts "rbconfig-universal-darwin-3.0.0: #{ENV["HOME"]}/.rubies/ruby-3.0.1/lib/ruby/3.0.0/#{RbConfig::CONFIG["sitearch"]}/rbconfig.rb"
+    f.puts "rbconfig-universal-darwin-3.1.0: #{ENV["HOME"]}/.rubies/ruby-3.1.0/lib/ruby/3.1.0/#{RbConfig::CONFIG["sitearch"]}/rbconfig.rb"
+
   end
 
   sh "bundle package"   # Avoid repeated downloads of gems by using gem files from the host.

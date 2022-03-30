@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    raygun-apm (1.1.12)
+    raygun-apm (1.1.13)
 
 GEM
   remote: https://rubygems.org/
@@ -17,7 +17,7 @@ GEM
     benchmark_driver (0.15.17)
     bson (4.12.1)
     concurrent-ruby (1.1.8)
-    debase-ruby_core_source (0.10.12)
+    debase-ruby_core_source (0.10.14)
     domain_name (0.5.20190701)
       unf (>= 0.0.5, < 1.0.0)
     excon (0.73.0)
@@ -50,7 +50,7 @@ GEM
     rake (13.0.3)
     rake-compiler (1.1.1)
       rake
-    rake-compiler-dock (1.1.0)
+    rake-compiler-dock (1.2.1)
     reline (0.2.5)
       io-console (~> 0.5)
     rest-client (2.1.0)
@@ -71,7 +71,7 @@ PLATFORMS
 DEPENDENCIES
   benchmark_driver (~> 0.15.9)
   bundler (~> 2.2.15)
-  debase-ruby_core_source (~> 0.10.9)
+  debase-ruby_core_source (~> 0.10.14)
   excon (~> 0.73.0)
   faraday (~> 1.0.1)
   httparty (~> 0.18.0)
@@ -82,7 +82,7 @@ DEPENDENCIES
   multipart-post (~> 2.1.1)
   rake (~> 13.0.3)
   rake-compiler (~> 1.1.1)
-  rake-compiler-dock (~> 1.1.0)
+  rake-compiler-dock (~> 1.2.1)
   raygun-apm!
   rest-client (~> 2.1.0)
 
