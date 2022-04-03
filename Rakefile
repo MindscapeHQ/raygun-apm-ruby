@@ -10,6 +10,15 @@ end
 
 gemspec = Gem::Specification.load('raygun-apm.gemspec')
 
+SUPPORTED_RUBY_VERSIONS = "2.5.0:2.6.0:2.7.0:3.0.0:3.1.0"
+# special case because no 3.1 support on x64_mingw32 - https://rubyinstaller.org/2021/12/31/rubyinstaller-3.1.0-1-released.html
+SUPPORTED_X64_MING32_RUBY_VERSIONS = "2.5.0:2.6.0:2.7.0:3.0.0"
+
+rubies_to_clean = []
+SUPPORTED_RUBY_VERSIONS.split(":").each do |version|
+  rubies_to_clean << "lib/raygun/#{version.gsub(/\.0$/, "")}"
+end
+
 exttask = Rake::ExtensionTask.new('raygun') do |ext|
   ext.name = 'raygun_ext'
   ext.ext_dir = 'ext/raygun'
@@ -18,6 +27,7 @@ exttask = Rake::ExtensionTask.new('raygun') do |ext|
   ext.cross_compile = true
   ext.cross_platform = %w[x86-mingw32 x64-mingw32 x86-linux x86_64-linux universal-darwin]
   CLEAN.include 'tmp', 'lib/**/raygun_ext.*'
+  CLEAN.include *rubies_to_clean
 end
 
 Rake::TestTask.new(:test) do |t|
@@ -34,17 +44,6 @@ Rake::TestTask.new(:test_build) do |t|
   t.libs << "test"
   t.libs << "lib"
   t.test_files = FileList["test/raygun/**/*_test.rb"]
-end
-
-SUPPORTED_RUBY_VERSIONS = "2.5.0:2.6.0:2.7.0:3.0.0:3.1.0"
-
-desc 'Beginnings of a task to trigger per ruby version and platform test suite runs on build'
-task 'test_at_build' do
-  SUPPORTED_RUBY_VERSIONS.split(":").each do |version|
-    version =~ /(\d+\.\d+)/
-    sh "cp lib/raygun/#{$1}/raygun_ext.so lib/raygun/raygun_ext.so"
-    #Rake::Task["test_build"].invoke
-  end
 end
 
 task 'gem:linux' do
@@ -69,8 +68,13 @@ task 'gem:native' do
   end
   exttask.cross_platform.each do |plat|
     next if plat =~ /darwin/
+    rubies = if plat == "x64-mingw32"
+      SUPPORTED_X64_MING32_RUBY_VERSIONS
+    else
+      SUPPORTED_RUBY_VERSIONS
+    end
     # Avoid conflicting declarations of gettimeofday: https://github.com/rake-compiler/rake-compiler-dock/issues/32
-    RakeCompilerDock.sh "find /usr/local/rake-compiler -name win32.h | while read f ; do sudo sed -i 's/gettimeofday/rb_gettimeofday/' $f ; done && bundle --local && rake clean && rake native:#{plat} gem RUBY_CC_VERSION=#{SUPPORTED_RUBY_VERSIONS} #{extra_env_vars.join(" ")} && rake test_at_build", platform: plat, verbose: true
+    RakeCompilerDock.sh "find /usr/local/rake-compiler -name win32.h | while read f ; do sudo sed -i 's/gettimeofday/rb_gettimeofday/' $f ; done && bundle --local && rake clean && rake native:#{plat} gem RUBY_CC_VERSION=#{rubies} #{extra_env_vars.join(" ")}", platform: plat, verbose: true
   end
 end
 
@@ -87,7 +91,6 @@ task 'gem:native:darwin' do
     f.puts "rbconfig-universal-darwin-2.7.0: #{ENV["HOME"]}/.rubies/ruby-2.7.2/lib/ruby/2.7.0/#{RbConfig::CONFIG["sitearch"]}/rbconfig.rb"
     f.puts "rbconfig-universal-darwin-3.0.0: #{ENV["HOME"]}/.rubies/ruby-3.0.1/lib/ruby/3.0.0/#{RbConfig::CONFIG["sitearch"]}/rbconfig.rb"
     f.puts "rbconfig-universal-darwin-3.1.0: #{ENV["HOME"]}/.rubies/ruby-3.1.0/lib/ruby/3.1.0/#{RbConfig::CONFIG["sitearch"]}/rbconfig.rb"
-
   end
 
   sh "bundle package"   # Avoid repeated downloads of gems by using gem files from the host.
