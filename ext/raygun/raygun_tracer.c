@@ -1656,7 +1656,7 @@ static void rb_rg_tracing_hook_i(VALUE tpval, void *data)
     // Lookup into the method info table to determine if we've already discovered this method and if true, if it's white or blacklisted
     if (LIKELY(st_lookup(tracer->methodinfo, (st_data_t)method, &entry))){
       // Early return if this method is blacklisted
-      if ((int)entry == RG_BLACKLIST_BLACKLISTED) return;
+      if (entry == NULL || (int)entry == RG_BLACKLIST_BLACKLISTED) return;
       // Cast to a rg_method_t struct otherwise
       rg_method = (rg_method_t *)entry;
 #ifdef RB_RG_DEBUG
@@ -1742,7 +1742,7 @@ static void rb_rg_tracing_hook_i(VALUE tpval, void *data)
     st_lookup(tracer->methodinfo, (st_data_t)method, &entry);
 
     // Early return if this method is blacklisted
-    if ((int)entry == RG_BLACKLIST_BLACKLISTED) return;
+    if (entry == NULL || (int)entry == RG_BLACKLIST_BLACKLISTED) return;
     // Cast to a rg_method_t struct otherwise
     rg_method = (rg_method_t *)entry;
 
