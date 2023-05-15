@@ -17,6 +17,7 @@
 * Make changes to the code and update the gem version in lib/raygun/apm/version.rb
 * Build by executing ./build-native-win-linux.sh. This script will spin up docker containers per target to do the native compilation. It uses the rake tool.
 * After building is completed, various target files per build platform will be generated in the /pkg directory
+* If you are using vagrant, type `exit` to log out from the VM. Then type `vagrant halt` to stop it and `vagrant destroy` when you want to remove it.
 
 == Building
 
