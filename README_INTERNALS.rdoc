@@ -1,5 +1,23 @@
 = Raygun Application Performance Monitoring Internals
 
+== Summary of development instructions
+
+=== Project Structure ===
+
+* The raygun-apm project comprises multiple repositories.
+* This (raygun-apm-ruby) is the main one and contains the core capabilities that the others (raygun-apm-rails, raygun-apm-sidekiq) can wrap around.
+* This repo uses native code written in C/C++.
+* There used to be a repo called bearmetal, which is no longer required and references to it should be replaced to this (raygun-apm-ruby) repository.
+* Additionally, there exists a testing environment in the apm-tools repository under test-env\ruby.
+
+=== Development Process ===
+
+* This repo works on Linux. If you are on Windows, you need a VM with Docker and Ruby. A Vagrantfile is included to help spin up the VM from Windows and provisions the VM with docker and the bundle ruby gem. After install vagrant, type `vagrant up` followed by `vagrant ssh`.
+* Navigate to the source directory of the gem. If you are running vagrant, this is mapped to /vagrant
+* Make changes to the code and update the gem version in lib/raygun/apm/version.rb
+* Build by executing ./build-native-win-linux.sh. This script will spin up docker containers per target to do the native compilation. It uses the rake tool.
+* After building is completed, various target files per build platform will be generated in the /pkg directory
+
 == Building
 
 All of the released gems for the Ruby APM profiler are compiled and statically linked with <code>libruby</code> at build time. The gems produced have native
