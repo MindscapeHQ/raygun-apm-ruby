@@ -79,4 +79,7 @@ void rb_rg_variable_info_init(rg_variable_info_t *var, VALUE obj, rg_variable_t 
 
 void _init_raygun_coercion();
 
+//rb_protect wrappers
+VALUE rb_protect_rb_big2ull(VALUE arg);
+
 #endif

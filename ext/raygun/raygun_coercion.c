@@ -147,7 +147,7 @@ rg_variable_info_t rb_rg_vt_coerce(VALUE name, VALUE obj, VALUE ecopts)
       if (BIGNUM_POSITIVE_P(obj))
       {
         //XXX ensure scientific notation do not blow up on string coercion
-        unsigned long long i = (unsigned long long)rb_protect((VALUE)rb_big2ull, obj, &status);
+        unsigned long long i = (unsigned long long)rb_protect(rb_protect_rb_big2ull, obj, &status);
         if (UNLIKELY(status)) {
           rb_rg_vt_coerce_string(&var, name, rb_big2str(obj, 10), rg_default_encoding, ecopts);
           // Clearing error info to ignore the caught exception
@@ -168,7 +168,7 @@ rg_variable_info_t rb_rg_vt_coerce(VALUE name, VALUE obj, VALUE ecopts)
       } else
       {
         //XXX ensure scientific notation do not blow up on string coercion
-        long long i = (long long)rb_protect((VALUE)rb_big2ll, obj, &status);
+        long long i = (long long)rb_protect(rb_protect_rb_big2ull, obj, &status);
         if (UNLIKELY(status)) {
           rb_rg_vt_coerce_string(&var, name, rb_big2str(obj, 10), rg_default_encoding, ecopts);
           // Clearing error info to ignore the caught exception
@@ -329,4 +329,10 @@ void _init_raygun_coercion()
   rg_utf8_encoding = rb_utf8_encoding();
   rg_utf32le_encoding = rb_enc_from_index(rb_enc_find_index("UTF-32LE"));
   rg_default_encoding = rg_utf16le_encoding;
+}
+
+VALUE rb_protect_rb_big2ull(VALUE arg)
+{
+    unsigned long long result = rb_big2ull(arg);
+    return ULL2NUM(result);
 }
