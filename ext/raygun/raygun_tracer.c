@@ -2767,15 +2767,15 @@ static VALUE rb_rg_tracer_diagnostics(VALUE obj)
   rb_rg_get_tracer(obj);
   VALUE thread = rb_thread_current();
   rg_thread_t *th = rb_rg_thread(tracer, thread);
-  printf("#### APM Tracer PID %d obj: %p size: %lu bytes\n", tracer->context->pid, (void *)obj, rb_rg_tracer_size(tracer));
+  printf("#### APM Tracer PID %d obj: %p size: %lu bytes\n", tracer->context->pid, (void *)obj, (unsigned long)rb_rg_tracer_size(tracer));
   printf("Methods: %d threads: %d nooped: %d\n", tracer->methods, tracer->threads, tracer->noop);
   printf("[Pointers] encoder context: %p threadsinfo: %p methodinfo: %p sink_data: %p batch: %p bipbuf: %p\n", (void *)tracer->context, (void *)tracer->threadsinfo, (void *)tracer->methodinfo, (void *)&tracer->sink_data, (void *)&tracer->sink_data.batch, (void *)tracer->sink_data.ringbuf.bipbuf);
   printf("[Execution context] Raygun thread: %d Ruby current thread: %p thread group: %ld\n", th->tid, (void *)thread, rb_rg_thread_group(GET_THREAD()));
   printf("[Ruby threads] timer thread: %p sink thread: %p\n", (void *)tracer->timer_thread, (void *)tracer->sink_thread);
   if (tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP) {
-    printf("[Encoder] batched: %lu raw: %lu flushed: %lu resets: %lu batches: %lu\n", tracer->sink_data.encoded_batched, tracer->sink_data.encoded_raw, tracer->sink_data.flushed, tracer->sink_data.resets, tracer->sink_data.batches);
-    printf("[Dispatch] batch count: %d sequence: %d batch pid: %d sink running: %d bytes sent: %lu failed sends: %lu jittered_sends: %lu\n", tracer->sink_data.batch.count, tracer->sink_data.batch.length, tracer->sink_data.batch.pid, tracer->sink_data.running, tracer->sink_data.bytes_sent, tracer->sink_data.failed_sends, tracer->sink_data.jittered_sends);
-    printf("[Buffer] size: %d max used: %lu used: %d unused: %d\n", bipbuf_size(tracer->sink_data.ringbuf.bipbuf), tracer->sink_data.max_buf_used, bipbuf_used(tracer->sink_data.ringbuf.bipbuf), bipbuf_unused(tracer->sink_data.ringbuf.bipbuf));
+    printf("[Encoder] batched: %lu raw: %lu flushed: %lu resets: %lu batches: %lu\n", (unsigned long) tracer->sink_data.encoded_batched, (unsigned long) tracer->sink_data.encoded_raw, (unsigned long) tracer->sink_data.flushed, (unsigned long) tracer->sink_data.resets, (unsigned long)tracer->sink_data.batches);
+    printf("[Dispatch] batch count: %d sequence: %d batch pid: %d sink running: %d bytes sent: %lu failed sends: %lu jittered_sends: %lu\n", tracer->sink_data.batch.count, tracer->sink_data.batch.length, tracer->sink_data.batch.pid, tracer->sink_data.running, (unsigned long) tracer->sink_data.bytes_sent, (unsigned long) tracer->sink_data.failed_sends, (unsigned long) tracer->sink_data.jittered_sends);
+    printf("[Buffer] size: %d max used: %lu used: %d unused: %d\n", bipbuf_size(tracer->sink_data.ringbuf.bipbuf), (unsigned long) tracer->sink_data.max_buf_used, bipbuf_used(tracer->sink_data.ringbuf.bipbuf), bipbuf_unused(tracer->sink_data.ringbuf.bipbuf));
   }
   printf("#### Method table:\n");
   st_foreach(tracer->methodinfo, rb_rg_methodinfo_table_dump_i, 0);
