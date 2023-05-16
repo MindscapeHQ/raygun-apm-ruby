@@ -19,7 +19,9 @@
 * Build by executing ./build-native-win-linux.sh. This script will spin up docker containers per target to do the native compilation. It uses the rake tool. For my system, it required hitting enter every now and then to get it unstuck... This was solved by prepending the commands called in the sh file with `stdbuf -o0`.
 * After building is completed, various target files per build platform will be generated in the /pkg directory
 * If you are using vagrant, type `exit` to log out from the VM. Then type `vagrant halt` to stop it and `vagrant destroy` when you want to remove it. If you run into issues with restarting halted vagrant VMs, clear everything up, including the .vagrant directory and start over.
+* Testing with the apm-tools repo requires that you follow the Readme.md instructions under test-env\ruby. Ensure you have all the repos downloaded and make the paths in the .env file point to them.
 * To test the new gem version, you can use the test apps in apm-tools repo. You must tun them with `bundle exec`, e.g., `bundle exec hell.rb` for ruby_console_app, to avoid gem caching.
+* To test the new gem version on ruby rails, use the sample app rails6 in the apm-tools repo under test-env/ruby/shared/apps. In its gem file, ensure the dev raygun-apm gem is uncommented, run bundle and start it as per the readme instructions there
 
 == Building
 
