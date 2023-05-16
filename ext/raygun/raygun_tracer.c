@@ -1939,8 +1939,13 @@ static VALUE rb_rg_tracer_udp_sink_set(int argc, VALUE* argv, VALUE obj)
   VALUE kwargs, socket, host, port, receive_buffer_size;
   rb_rg_get_tracer(obj);
 
+  //Ignore pedantic warning errors from the ruby C API
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wpedantic"
   // Scans and validates various supported keyword arguments
   rb_scan_args(argc, argv, ":", &kwargs);
+  #pragma GCC diagnostic pop
+
   if (NIL_P(kwargs)) kwargs = rb_hash_new();
 
   socket = rb_hash_aref(kwargs, ID2SYM(rb_rg_id_socket));
@@ -2069,8 +2074,13 @@ static VALUE rb_rg_tracer_tcp_sink_set(int argc, VALUE* argv, VALUE obj)
   VALUE kwargs, host, port;
   rb_rg_get_tracer(obj);
 
+  //Ignore pedantic warning errors from the ruby C API
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wpedantic"
   // Scans and validates various supported keyword arguments
   rb_scan_args(argc, argv, ":", &kwargs);
+  #pragma GCC diagnostic pop
+
   if (NIL_P(kwargs)) kwargs = rb_hash_new();
 
   // Validates the host argument
