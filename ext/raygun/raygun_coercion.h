@@ -5,6 +5,7 @@
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
+#pragma GCC diagnostic ignored "-Woverflow"
 #include <ruby/ruby.h>
 #include <ruby/encoding.h>
 #include <ruby/debug.h>
