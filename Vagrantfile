@@ -54,9 +54,10 @@ Vagrant.configure("2") do |config|
   #   vb.gui = true
   #
   #   # Customize the amount of memory on the VM:
+  #  16GB of Ram and 8 CPUs
      vb.name = "APM Ruby Ubuntu"
-     vb.memory = "2048"
-     vb.cpus = "2"
+     vb.memory = "16384"
+     vb.cpus = "8"
   end
   #
   # View the documentation for the provider you are using for more
