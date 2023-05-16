@@ -410,12 +410,14 @@ static VALUE rb_rg_callback_sink_call(VALUE ptr)
 }
 
 // Sink that calls a registered ruby Proc and coerces raw Raygun wire protocol events to wrapped structs (objects) allocated on the Ruby heap
-// Invokves the callback sink closure with rb_protect in order to handle any runtime errors cleanly without blowing up the tracer instance
-static int rb_rg_callback_sink(rg_context_t *context, rb_rg_sink_data_t *sink_data, rg_event_t *event, const rg_length_t size)
+// Invokes the callback sink closure with rb_protect in order to handle any runtime errors cleanly without blowing up the tracer instance
+static int rb_rg_callback_sink(rg_context_t *context, void *userdata, const rg_event_t *event, const rg_length_t size)
 {
   int status = 0;
   rg_event_t *event_copy;
   VALUE wrapped_event;
+
+  rb_rg_sink_data_t *sink_data = userdata;
 
   // In reality this can never happen, but check nonetheless
   if (!sink_data->callback)
@@ -1464,6 +1466,9 @@ static rg_method_t *rb_rg_methodinfo(rb_rg_tracer_t *tracer, rb_rg_trace_context
         printf("[Raygun APM] REPLACED whitelisted method ctx: %p tid: %u namespace: %p, method: %lu function_id:%u %s\n", (void *)trace_context, tid, (void *)namespace, method, rg_method->function_id, blacklist_needle);
       }
     }
+#else
+    // Use variable ret to avoid -Werror=unused-but-set-variable
+    (void)ret;
 #endif
     return rg_method;
   } else {
@@ -1656,7 +1661,7 @@ static void rb_rg_tracing_hook_i(VALUE tpval, void *data)
     // Lookup into the method info table to determine if we've already discovered this method and if true, if it's white or blacklisted
     if (LIKELY(st_lookup(tracer->methodinfo, (st_data_t)method, &entry))){
       // Early return if this method is blacklisted
-      if (entry == NULL || (int)entry == RG_BLACKLIST_BLACKLISTED) return;
+      if (((void*)entry) == NULL || (int)entry == RG_BLACKLIST_BLACKLISTED) return;
       // Cast to a rg_method_t struct otherwise
       rg_method = (rg_method_t *)entry;
 #ifdef RB_RG_DEBUG
@@ -1742,7 +1747,7 @@ static void rb_rg_tracing_hook_i(VALUE tpval, void *data)
     st_lookup(tracer->methodinfo, (st_data_t)method, &entry);
 
     // Early return if this method is blacklisted
-    if (entry == NULL || (int)entry == RG_BLACKLIST_BLACKLISTED) return;
+    if (((void*)entry) == NULL || (int)entry == RG_BLACKLIST_BLACKLISTED) return;
     // Cast to a rg_method_t struct otherwise
     rg_method = (rg_method_t *)entry;
 
