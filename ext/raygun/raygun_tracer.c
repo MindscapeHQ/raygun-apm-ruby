@@ -665,6 +665,27 @@ static int rb_rg_async_emit_methodinfo_i(st_data_t key, st_data_t val, st_data_t
   return ST_CONTINUE;
 }
 
+// Ruby specific wrapper for the process frequency command - mostly just invokes the encoder counterpart.
+static void rb_rg_process_frequency(const rb_rg_tracer_t *tracer, rg_frequency_t frequency)
+{
+  rg_process_frequency(tracer->context, (void *)&tracer->sink_data, 0, frequency);
+}
+
+// Invoked during async methodinfo table sync only. Mostly delegates to the encoder specific process type helper
+// and sets the technology type and process type fields. Begin transaction mostly replaced this for trace specific contexts.
+//
+static void rb_rg_process_type(const rb_rg_tracer_t *tracer)
+{
+  rg_encoded_string_t technology_type_string, process_type_string;
+  // XXX pending encoded string support in spec
+  technology_type_string.encoding = RG_STRING_ENCODING_ASCII;
+  process_type_string.encoding = RG_STRING_ENCODING_ASCII;
+
+  rb_rg_encode_string(&technology_type_string, tracer->technology_type, Qnil);
+  rb_rg_encode_string(&process_type_string, tracer->process_type, Qnil);
+  rg_process_type(tracer->context, (void *)&tracer->sink_data, 0, technology_type_string, process_type_string);
+}
+
 // Re-syncs the current global method table (whitelisted methods this process has seen) with the Agent, in case the Agent died and comes back up,
 // effectively orphaned from any previously methodinfo table state.
 static void rb_rg_async_emit_methodinfos(const rb_rg_tracer_t *tracer) {
@@ -1299,12 +1320,6 @@ static void rb_rg_thread_started(rb_rg_tracer_t *tracer, VALUE parent_thread, VA
   RB_GC_GUARD(thread);
 }
 
-// Ruby specific wrapper for the process frequency command - mostly just invokes the encoder counterpart.
-static void rb_rg_process_frequency(const rb_rg_tracer_t *tracer, rg_frequency_t frequency)
-{
-  rg_process_frequency(tracer->context, (void *)&tracer->sink_data, 0, frequency);
-}
-
 // Invoked when a new Trace is started. Mostly delegates to the encoder specific begin transaction helper
 // and sets the API key, technology type and process type fields.
 //
@@ -1327,21 +1342,6 @@ static void rb_rg_begin_transaction(const rb_rg_tracer_t *tracer, rg_tid_t tid)
 static void rb_rg_end_transaction(const rb_rg_tracer_t *tracer, rg_tid_t tid)
 {
   rg_end_transaction(tracer->context, (void *)&tracer->sink_data, tid);
-}
-
-// Invoked during async methodinfo table sync only. Mostly delegates to the encoder specific process type helper
-// and sets the technology type and process type fields. Begin transaction mostly replaced this for trace specific contexts.
-//
-static void rb_rg_process_type(const rb_rg_tracer_t *tracer)
-{
-  rg_encoded_string_t technology_type_string, process_type_string;
-  // XXX pending encoded string support in spec
-  technology_type_string.encoding = RG_STRING_ENCODING_ASCII;
-  process_type_string.encoding = RG_STRING_ENCODING_ASCII;
-
-  rb_rg_encode_string(&technology_type_string, tracer->technology_type, Qnil);
-  rb_rg_encode_string(&process_type_string, tracer->process_type, Qnil);
-  rg_process_type(tracer->context, (void *)&tracer->sink_data, 0, technology_type_string, process_type_string);
 }
 
 #ifdef RB_RG_EMIT_ARGUMENTS
