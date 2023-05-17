@@ -1508,9 +1508,9 @@ static void rb_rg_exception_thrown(const rb_rg_tracer_t *tracer, rg_tid_t tid, V
   rb_rg_encode_string(&class_name_string, class_name, Qnil);
 
   correlation_id_string.encoding = RG_STRING_ENCODING_ASCII;
-  // Correlation ID is a tuple of [PID, pointer to the tracer, pointer to the exception] - should be unique enough to not have any collission opportunity for
+  // Correlation ID is a tuple of [PID, pointer to the tracer, pointer to the exception] - should be unique enough to not have any collision opportunity for
   // the same customer in a 30 day trace retention window.
-  correlation_id = rb_sprintf("%d-%lu-%lu", tracer->context->pid, (VALUE)tracer, exception);
+  correlation_id = rb_sprintf("%d-%p-%p", tracer->context->pid, (void *)(VALUE)tracer, (void *)exception);
   rb_ivar_set(exception, rb_rg_id_exception_correlation_ivar, correlation_id);
   rb_rg_encode_string(&correlation_id_string, correlation_id, Qnil);
 
@@ -2740,7 +2740,7 @@ static int rb_rg_methodinfo_table_dump_i(st_data_t key, st_data_t val, st_data_t
 {
   rg_method_t *rg_method = (rg_method_t *)val;
   if ((int)val != RG_BLACKLIST_BLACKLISTED) {
-    printf("[WL] %lu %s -> %u\n", key, rg_method->name, rg_method->function_id);
+    printf("[WL] %p %s -> %u\n", (void *)key, rg_method->name, rg_method->function_id);
   }
   return ST_CONTINUE;
 }
@@ -2749,7 +2749,7 @@ static int rb_rg_methodinfo_table_dump_i(st_data_t key, st_data_t val, st_data_t
 static int rb_rg_threadsinfo_table_dump_i(st_data_t key, st_data_t val, st_data_t data)
 {
   rg_thread_t *rg_thread = (rg_thread_t *)val;
-  printf("[TH] %lu parent %d -> %d\n", key, rg_thread->parent_tid, rg_thread->tid);
+  printf("[TH] %p parent %d -> %d\n", (void *)key, rg_thread->parent_tid, rg_thread->tid);
   return ST_CONTINUE;
 }
 
@@ -2757,7 +2757,7 @@ static int rb_rg_threadsinfo_table_dump_i(st_data_t key, st_data_t val, st_data_
 static int rb_rg_tracecontexts_dump_i(st_data_t key, st_data_t val, st_data_t data)
 {
   rb_rg_trace_context_t *rg_trace_context = (rb_rg_trace_context_t *)val;
-  printf("[TC] %ld trace_context: %p thread %lu -> %lu (enabled: %lu)\n", key, (void *)rg_trace_context, rg_trace_context->thread, rg_trace_context->tracepoint, rb_tracepoint_enabled_p(rg_trace_context->tracepoint));
+  printf("[TC] %p trace_context: %p thread %p -> %p (enabled: %p)\n", (void *)key, (void *)rg_trace_context, (void *)rg_trace_context->thread, (void *)rg_trace_context->tracepoint, (void *)rb_tracepoint_enabled_p(rg_trace_context->tracepoint));
   return ST_CONTINUE;
 }
 
@@ -2772,7 +2772,7 @@ static VALUE rb_rg_tracer_diagnostics(VALUE obj)
   printf("#### APM Tracer PID %d obj: %p size: %lu bytes\n", tracer->context->pid, (void *)obj, (unsigned long)rb_rg_tracer_size(tracer));
   printf("Methods: %d threads: %d nooped: %d\n", tracer->methods, tracer->threads, tracer->noop);
   printf("[Pointers] encoder context: %p threadsinfo: %p methodinfo: %p sink_data: %p batch: %p bipbuf: %p\n", (void *)tracer->context, (void *)tracer->threadsinfo, (void *)tracer->methodinfo, (void *)&tracer->sink_data, (void *)&tracer->sink_data.batch, (void *)tracer->sink_data.ringbuf.bipbuf);
-  printf("[Execution context] Raygun thread: %d Ruby current thread: %p thread group: %ld\n", th->tid, (void *)thread, rb_rg_thread_group(GET_THREAD()));
+  printf("[Execution context] Raygun thread: %d Ruby current thread: %p thread group: %p\n", th->tid, (void *)thread, (void *)rb_rg_thread_group(GET_THREAD()));
   printf("[Ruby threads] timer thread: %p sink thread: %p\n", (void *)tracer->timer_thread, (void *)tracer->sink_thread);
   if (tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP) {
     printf("[Encoder] batched: %lu raw: %lu flushed: %lu resets: %lu batches: %lu\n", (unsigned long) tracer->sink_data.encoded_batched, (unsigned long) tracer->sink_data.encoded_raw, (unsigned long) tracer->sink_data.flushed, (unsigned long) tracer->sink_data.resets, (unsigned long)tracer->sink_data.batches);
