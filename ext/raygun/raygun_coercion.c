@@ -100,7 +100,7 @@ static inline void rb_rg_vt_coerce_fixnum(rg_variable_info_t *var, VALUE name, V
     rb_rg_vt_coerce_long(var, name, obj);
   } else
   {
-    rb_raise(rb_eRaygunFatal, "Unhandled fixnum:%"PRIsVALUE"", obj);
+    rb_raise(rb_eRaygunFatal, "Unhandled fixnum: %p", (void*)obj);
   }
 }
 

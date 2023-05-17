@@ -1004,7 +1004,7 @@ static rg_variable_info_t rb_rg_tracepoint_return_value(rb_rg_tracer_t *tracer, 
 #ifdef RB_RG_TRACE_BLOCKS
 static VALUE rb_rg_block_name(const rb_trace_arg_t *tparg)
 {
-  return rb_sprintf("block:%"PRIsVALUE":%"PRIsVALUE"", tparg->cfp->iseq->body->location.base_label, rb_iseq_first_lineno(tparg->cfp->iseq));
+  return rb_sprintf("block:%p:%p", (void*)tparg->cfp->iseq->body->location.base_label, (void*)rb_iseq_first_lineno(tparg->cfp->iseq));
 }
 #endif
 
