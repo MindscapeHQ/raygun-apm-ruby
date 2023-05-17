@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    raygun-apm (1.1.14)
+    raygun-apm (1.1.15.pre1)
 
 GEM
   remote: https://rubygems.org/
@@ -23,6 +23,7 @@ GEM
     excon (0.73.0)
     faraday (1.0.1)
       multipart-post (>= 1.2, < 3)
+    ffi (1.15.5-x64-mingw32)
     http-accept (1.7.0)
     http-cookie (1.0.3)
       domain_name (~> 0.5)
@@ -58,6 +59,12 @@ GEM
       http-cookie (>= 1.0.2, < 2.0)
       mime-types (>= 1.16, < 4.0)
       netrc (~> 0.8)
+    rest-client (2.1.0-x64-mingw32)
+      ffi (~> 1.9)
+      http-accept (>= 1.7.0, < 2.0)
+      http-cookie (>= 1.0.2, < 2.0)
+      mime-types (>= 1.16, < 4.0)
+      netrc (~> 0.8)
     tzinfo (2.0.4)
       concurrent-ruby (~> 1.0)
     unf (0.1.4)
@@ -67,6 +74,7 @@ GEM
 
 PLATFORMS
   ruby
+  x64-mingw32
 
 DEPENDENCIES
   benchmark_driver (~> 0.15.9)
@@ -87,4 +95,4 @@ DEPENDENCIES
   rest-client (~> 2.1.0)
 
 BUNDLED WITH
-   2.2.23
+   2.2.33
