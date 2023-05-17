@@ -36,6 +36,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <math.h>
+#include <stdint.h>
 #include "rax.h"
 
 #ifndef RAX_MALLOC_INCLUDE
@@ -1924,7 +1925,7 @@ unsigned long raxTouch(raxNode *n) {
     debugf("Touching %p\n", (void*)n);
     unsigned long sum = 0;
     if (n->iskey) {
-        sum += (unsigned long)raxGetData(n);
+        sum += (unsigned long)(uintptr_t)raxGetData(n);
     }
 
     int numchildren = n->iscompr ? 1 : n->size;
