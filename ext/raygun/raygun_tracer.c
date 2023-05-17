@@ -2,6 +2,8 @@
 #include "extconf.h"
 #include "raygun_tracer.h"
 
+#include <stdint.h>
+
 // The Raygun::Tracer class setup in the Init_ function
 VALUE rb_cRaygunTracer;
 
@@ -1073,7 +1075,7 @@ static long rb_rg_blacklisted_string_p(const rax *tree, unsigned char *needle, s
     {
       if(h->iskey)
       {
-        blacklisted = (long)raxGetData(h);
+        blacklisted = (long)(uintptr_t)raxGetData(h);
         if (blacklisted == RG_BLACKLIST_WHITELISTED) break;
       }
     } while ( (h = raxStackPop(&ts)) );
@@ -1094,7 +1096,7 @@ static long rb_rg_blacklisted_method_p(const rb_rg_tracer_t *tracer, unsigned ch
   // look for an exact match of the fully qualified method, first
   data = raxFind(tracer->blacklist_fq, fully_qualified, fully_qualified_len);
   if (data != raxNotFound) {
-    blacklisted = (long)data;
+    blacklisted = (long)(uintptr_t)data;
     if (UNLIKELY(debug)) printf("BL exact fq match on '%s' %d\n", fully_qualified, blacklisted);
     goto matched;
   }
@@ -1102,7 +1104,7 @@ static long rb_rg_blacklisted_method_p(const rb_rg_tracer_t *tracer, unsigned ch
   // look for an exact match of the path, second
   data = raxFind(tracer->blacklist_paths, path, path_len);
   if (data != raxNotFound) {
-    blacklisted = (long)data;
+    blacklisted = (long)(uintptr_t)data;
     if (UNLIKELY(debug)) printf("BL exact path match on '%s' %d\n", path, blacklisted);
     goto matched;
   }
@@ -1110,7 +1112,7 @@ static long rb_rg_blacklisted_method_p(const rb_rg_tracer_t *tracer, unsigned ch
   // look for an exact match of the method, third
   data = raxFind(tracer->blacklist_methods, method, method_len);
   if (data != raxNotFound) {
-    blacklisted = (long)data;
+    blacklisted = (long)(uintptr_t)data;
     if (UNLIKELY(debug)) printf("BL exact method match on '%s' %d\n", method, blacklisted);
     goto matched;
   }
@@ -1120,20 +1122,20 @@ static long rb_rg_blacklisted_method_p(const rb_rg_tracer_t *tracer, unsigned ch
   raxSeek(&piter, "<=", path, path_len);
   while(raxNext(&piter)) {
     if (strncmp((const char*)piter.key, (const char*)path, 1) > 0) {
-      if (UNLIKELY(debug)) printf("BL STOP %.*s '%s': %.*s path iter %lu\n", 1, path, path, (int)piter.key_len, (char*)piter.key, (long)piter.data);
+      if (UNLIKELY(debug)) printf("BL STOP %.*s '%s': %.*s path iter %lu\n", 1, path, path, (int)piter.key_len, (char*)piter.key, (long)(uintptr_t)piter.data);
       break;
     }
     if (piter.key_len > 2) {
       // Catch for class paths that terminate with "::" strings
       if (strncmp((const char *)(piter.key + piter.key_len - 2), "::", 2) == 0 && strncmp((const char*)fully_qualified, (const char*)piter.key, piter.key_len) == 0) {
-        blacklisted = (long)piter.data;
+        blacklisted = (long)(uintptr_t)piter.data;
         if (UNLIKELY(debug)) printf("BL '%s': %.*s path match on tailing '::' %d\n", path, (int)piter.key_len, (char*)piter.key, blacklisted);
         raxStop(&piter);
         goto matched;
       }
       // Catch for method paths that terminate with "#" strings
       if (strncmp((const char *)(piter.key + piter.key_len - 1), "#", 1) == 0 && strncmp((const char*)fully_qualified, (const char*)piter.key, piter.key_len) == 0) {
-        blacklisted = (long)piter.data;
+        blacklisted = (long)(uintptr_t)piter.data;
         if (UNLIKELY(debug)) printf("BL '%s': %.*s path match on tailing '#' %d\n", path, (int)piter.key_len, (char*)piter.key, blacklisted);
         raxStop(&piter);
         goto matched;
@@ -2386,7 +2388,7 @@ static VALUE rb_rg_tracer_blacklist_add0(VALUE obj, VALUE path, VALUE method, lo
     args[0] = path;
     args[1] = method;
     needle = rb_str_format(2, args, rb_str_new2("%s#%s"));
-    res = raxInsert(tracer->blacklist_fq, (unsigned char*)StringValueCStr(needle), RSTRING_LEN(needle), (void *)data, NULL);
+    res = raxInsert(tracer->blacklist_fq, (unsigned char*)StringValueCStr(needle), RSTRING_LEN(needle), (void *)(uintptr_t)data, NULL);
     if (res == 0 && errno == ENOMEM )
     {
 #ifdef RB_RG_DEBUG
@@ -2399,7 +2401,7 @@ static VALUE rb_rg_tracer_blacklist_add0(VALUE obj, VALUE path, VALUE method, lo
   // If only path is set and method is not, add it to the radix tree that tracks the paths rules
   } else if (RTEST(path) && !RTEST(method)) {
     needle = path;
-    res = raxInsert(tracer->blacklist_paths, (unsigned char*)StringValueCStr(needle), RSTRING_LEN(needle), (void *)data, NULL);
+    res = raxInsert(tracer->blacklist_paths, (unsigned char*)StringValueCStr(needle), RSTRING_LEN(needle), (void *)(uintptr_t)data, NULL);
     if (res == 0 && errno == ENOMEM )
     {
 #ifdef RB_RG_DEBUG
@@ -2412,7 +2414,7 @@ static VALUE rb_rg_tracer_blacklist_add0(VALUE obj, VALUE path, VALUE method, lo
   // If only method is set and path is not, add it to the radix tree that tracks the methods rules
   } else if (RTEST(method) && !RTEST(path)) {
     needle = method;
-    res = raxInsert(tracer->blacklist_methods, (unsigned char*)StringValueCStr(needle), RSTRING_LEN(needle), (void *)data, NULL);
+    res = raxInsert(tracer->blacklist_methods, (unsigned char*)StringValueCStr(needle), RSTRING_LEN(needle), (void *)(uintptr_t)data, NULL);
     if (res == 0 && errno == ENOMEM )
     {
 #ifdef RB_RG_DEBUG
@@ -2424,7 +2426,7 @@ static VALUE rb_rg_tracer_blacklist_add0(VALUE obj, VALUE path, VALUE method, lo
     }
   }
   // Fall through - set in the all-of-the-things radix tree
-  res = raxInsert(tracer->blacklist, (unsigned char*)StringValueCStr(needle), RSTRING_LEN(needle), (void *)data, NULL);
+  res = raxInsert(tracer->blacklist, (unsigned char*)StringValueCStr(needle), RSTRING_LEN(needle), (void *)(uintptr_t)data, NULL);
   if (res == 0 && errno == ENOMEM )
   {
 #ifdef RB_RG_DEBUG
