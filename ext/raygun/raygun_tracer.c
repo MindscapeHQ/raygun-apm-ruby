@@ -2,6 +2,8 @@
 #include "extconf.h"
 #include "raygun_tracer.h"
 
+#include <stdint.h>
+
 // The Raygun::Tracer class setup in the Init_ function
 VALUE rb_cRaygunTracer;
 
@@ -410,12 +412,14 @@ static VALUE rb_rg_callback_sink_call(VALUE ptr)
 }
 
 // Sink that calls a registered ruby Proc and coerces raw Raygun wire protocol events to wrapped structs (objects) allocated on the Ruby heap
-// Invokves the callback sink closure with rb_protect in order to handle any runtime errors cleanly without blowing up the tracer instance
-static int rb_rg_callback_sink(rg_context_t *context, rb_rg_sink_data_t *sink_data, rg_event_t *event, const rg_length_t size)
+// Invokes the callback sink closure with rb_protect in order to handle any runtime errors cleanly without blowing up the tracer instance
+static int rb_rg_callback_sink(rg_context_t *context, void *userdata, const rg_event_t *event, const rg_length_t size)
 {
   int status = 0;
   rg_event_t *event_copy;
   VALUE wrapped_event;
+
+  rb_rg_sink_data_t *sink_data = userdata;
 
   // In reality this can never happen, but check nonetheless
   if (!sink_data->callback)
@@ -663,6 +667,27 @@ static int rb_rg_async_emit_methodinfo_i(st_data_t key, st_data_t val, st_data_t
   memcpy(tracer->context->buf, rg_method->encoded, rg_method->encoded_size);
   tracer->context->sink(tracer->context, (void *)&tracer->sink_data, &event, rg_method->encoded_size);
   return ST_CONTINUE;
+}
+
+// Ruby specific wrapper for the process frequency command - mostly just invokes the encoder counterpart.
+static void rb_rg_process_frequency(const rb_rg_tracer_t *tracer, rg_frequency_t frequency)
+{
+  rg_process_frequency(tracer->context, (void *)&tracer->sink_data, 0, frequency);
+}
+
+// Invoked during async methodinfo table sync only. Mostly delegates to the encoder specific process type helper
+// and sets the technology type and process type fields. Begin transaction mostly replaced this for trace specific contexts.
+//
+static void rb_rg_process_type(const rb_rg_tracer_t *tracer)
+{
+  rg_encoded_string_t technology_type_string, process_type_string;
+  // XXX pending encoded string support in spec
+  technology_type_string.encoding = RG_STRING_ENCODING_ASCII;
+  process_type_string.encoding = RG_STRING_ENCODING_ASCII;
+
+  rb_rg_encode_string(&technology_type_string, tracer->technology_type, Qnil);
+  rb_rg_encode_string(&process_type_string, tracer->process_type, Qnil);
+  rg_process_type(tracer->context, (void *)&tracer->sink_data, 0, technology_type_string, process_type_string);
 }
 
 // Re-syncs the current global method table (whitelisted methods this process has seen) with the Agent, in case the Agent died and comes back up,
@@ -981,7 +1006,7 @@ static rg_variable_info_t rb_rg_tracepoint_return_value(rb_rg_tracer_t *tracer, 
 #ifdef RB_RG_TRACE_BLOCKS
 static VALUE rb_rg_block_name(const rb_trace_arg_t *tparg)
 {
-  return rb_sprintf("block:%"PRIsVALUE":%"PRIsVALUE"", tparg->cfp->iseq->body->location.base_label, rb_iseq_first_lineno(tparg->cfp->iseq));
+  return rb_sprintf("block:%p:%p", (void*)tparg->cfp->iseq->body->location.base_label, (void*)rb_iseq_first_lineno(tparg->cfp->iseq));
 }
 #endif
 
@@ -1050,7 +1075,7 @@ static long rb_rg_blacklisted_string_p(const rax *tree, unsigned char *needle, s
     {
       if(h->iskey)
       {
-        blacklisted = (long)raxGetData(h);
+        blacklisted = (long)(uintptr_t)raxGetData(h);
         if (blacklisted == RG_BLACKLIST_WHITELISTED) break;
       }
     } while ( (h = raxStackPop(&ts)) );
@@ -1071,7 +1096,7 @@ static long rb_rg_blacklisted_method_p(const rb_rg_tracer_t *tracer, unsigned ch
   // look for an exact match of the fully qualified method, first
   data = raxFind(tracer->blacklist_fq, fully_qualified, fully_qualified_len);
   if (data != raxNotFound) {
-    blacklisted = (long)data;
+    blacklisted = (long)(uintptr_t)data;
     if (UNLIKELY(debug)) printf("BL exact fq match on '%s' %d\n", fully_qualified, blacklisted);
     goto matched;
   }
@@ -1079,7 +1104,7 @@ static long rb_rg_blacklisted_method_p(const rb_rg_tracer_t *tracer, unsigned ch
   // look for an exact match of the path, second
   data = raxFind(tracer->blacklist_paths, path, path_len);
   if (data != raxNotFound) {
-    blacklisted = (long)data;
+    blacklisted = (long)(uintptr_t)data;
     if (UNLIKELY(debug)) printf("BL exact path match on '%s' %d\n", path, blacklisted);
     goto matched;
   }
@@ -1087,7 +1112,7 @@ static long rb_rg_blacklisted_method_p(const rb_rg_tracer_t *tracer, unsigned ch
   // look for an exact match of the method, third
   data = raxFind(tracer->blacklist_methods, method, method_len);
   if (data != raxNotFound) {
-    blacklisted = (long)data;
+    blacklisted = (long)(uintptr_t)data;
     if (UNLIKELY(debug)) printf("BL exact method match on '%s' %d\n", method, blacklisted);
     goto matched;
   }
@@ -1097,20 +1122,20 @@ static long rb_rg_blacklisted_method_p(const rb_rg_tracer_t *tracer, unsigned ch
   raxSeek(&piter, "<=", path, path_len);
   while(raxNext(&piter)) {
     if (strncmp((const char*)piter.key, (const char*)path, 1) > 0) {
-      if (UNLIKELY(debug)) printf("BL STOP %.*s '%s': %.*s path iter %lu\n", 1, path, path, (int)piter.key_len, (char*)piter.key, (long)piter.data);
+      if (UNLIKELY(debug)) printf("BL STOP %.*s '%s': %.*s path iter %lu\n", 1, path, path, (int)piter.key_len, (char*)piter.key, (long)(uintptr_t)piter.data);
       break;
     }
     if (piter.key_len > 2) {
       // Catch for class paths that terminate with "::" strings
       if (strncmp((const char *)(piter.key + piter.key_len - 2), "::", 2) == 0 && strncmp((const char*)fully_qualified, (const char*)piter.key, piter.key_len) == 0) {
-        blacklisted = (long)piter.data;
+        blacklisted = (long)(uintptr_t)piter.data;
         if (UNLIKELY(debug)) printf("BL '%s': %.*s path match on tailing '::' %d\n", path, (int)piter.key_len, (char*)piter.key, blacklisted);
         raxStop(&piter);
         goto matched;
       }
       // Catch for method paths that terminate with "#" strings
       if (strncmp((const char *)(piter.key + piter.key_len - 1), "#", 1) == 0 && strncmp((const char*)fully_qualified, (const char*)piter.key, piter.key_len) == 0) {
-        blacklisted = (long)piter.data;
+        blacklisted = (long)(uintptr_t)piter.data;
         if (UNLIKELY(debug)) printf("BL '%s': %.*s path match on tailing '#' %d\n", path, (int)piter.key_len, (char*)piter.key, blacklisted);
         raxStop(&piter);
         goto matched;
@@ -1299,12 +1324,6 @@ static void rb_rg_thread_started(rb_rg_tracer_t *tracer, VALUE parent_thread, VA
   RB_GC_GUARD(thread);
 }
 
-// Ruby specific wrapper for the process frequency command - mostly just invokes the encoder counterpart.
-static void rb_rg_process_frequency(const rb_rg_tracer_t *tracer, rg_frequency_t frequency)
-{
-  rg_process_frequency(tracer->context, (void *)&tracer->sink_data, 0, frequency);
-}
-
 // Invoked when a new Trace is started. Mostly delegates to the encoder specific begin transaction helper
 // and sets the API key, technology type and process type fields.
 //
@@ -1327,21 +1346,6 @@ static void rb_rg_begin_transaction(const rb_rg_tracer_t *tracer, rg_tid_t tid)
 static void rb_rg_end_transaction(const rb_rg_tracer_t *tracer, rg_tid_t tid)
 {
   rg_end_transaction(tracer->context, (void *)&tracer->sink_data, tid);
-}
-
-// Invoked during async methodinfo table sync only. Mostly delegates to the encoder specific process type helper
-// and sets the technology type and process type fields. Begin transaction mostly replaced this for trace specific contexts.
-//
-static void rb_rg_process_type(const rb_rg_tracer_t *tracer)
-{
-  rg_encoded_string_t technology_type_string, process_type_string;
-  // XXX pending encoded string support in spec
-  technology_type_string.encoding = RG_STRING_ENCODING_ASCII;
-  process_type_string.encoding = RG_STRING_ENCODING_ASCII;
-
-  rb_rg_encode_string(&technology_type_string, tracer->technology_type, Qnil);
-  rb_rg_encode_string(&process_type_string, tracer->process_type, Qnil);
-  rg_process_type(tracer->context, (void *)&tracer->sink_data, 0, technology_type_string, process_type_string);
 }
 
 #ifdef RB_RG_EMIT_ARGUMENTS
@@ -1464,6 +1468,9 @@ static rg_method_t *rb_rg_methodinfo(rb_rg_tracer_t *tracer, rb_rg_trace_context
         printf("[Raygun APM] REPLACED whitelisted method ctx: %p tid: %u namespace: %p, method: %lu function_id:%u %s\n", (void *)trace_context, tid, (void *)namespace, method, rg_method->function_id, blacklist_needle);
       }
     }
+#else
+    // Use variable ret to avoid -Werror=unused-but-set-variable
+    (void)ret;
 #endif
     return rg_method;
   } else {
@@ -1501,9 +1508,9 @@ static void rb_rg_exception_thrown(const rb_rg_tracer_t *tracer, rg_tid_t tid, V
   rb_rg_encode_string(&class_name_string, class_name, Qnil);
 
   correlation_id_string.encoding = RG_STRING_ENCODING_ASCII;
-  // Correlation ID is a tuple of [PID, pointer to the tracer, pointer to the exception] - should be unique enough to not have any collission opportunity for
+  // Correlation ID is a tuple of [PID, pointer to the tracer, pointer to the exception] - should be unique enough to not have any collision opportunity for
   // the same customer in a 30 day trace retention window.
-  correlation_id = rb_sprintf("%d-%lu-%lu", tracer->context->pid, (VALUE)tracer, exception);
+  correlation_id = rb_sprintf("%d-%p-%p", tracer->context->pid, (void *)(VALUE)tracer, (void *)exception);
   rb_ivar_set(exception, rb_rg_id_exception_correlation_ivar, correlation_id);
   rb_rg_encode_string(&correlation_id_string, correlation_id, Qnil);
 
@@ -1656,7 +1663,7 @@ static void rb_rg_tracing_hook_i(VALUE tpval, void *data)
     // Lookup into the method info table to determine if we've already discovered this method and if true, if it's white or blacklisted
     if (LIKELY(st_lookup(tracer->methodinfo, (st_data_t)method, &entry))){
       // Early return if this method is blacklisted
-      if (entry == NULL || (int)entry == RG_BLACKLIST_BLACKLISTED) return;
+      if (((void*)entry) == NULL || (int)entry == RG_BLACKLIST_BLACKLISTED) return;
       // Cast to a rg_method_t struct otherwise
       rg_method = (rg_method_t *)entry;
 #ifdef RB_RG_DEBUG
@@ -1742,7 +1749,7 @@ static void rb_rg_tracing_hook_i(VALUE tpval, void *data)
     st_lookup(tracer->methodinfo, (st_data_t)method, &entry);
 
     // Early return if this method is blacklisted
-    if (entry == NULL || (int)entry == RG_BLACKLIST_BLACKLISTED) return;
+    if (((void*)entry) == NULL || (int)entry == RG_BLACKLIST_BLACKLISTED) return;
     // Cast to a rg_method_t struct otherwise
     rg_method = (rg_method_t *)entry;
 
@@ -1934,8 +1941,13 @@ static VALUE rb_rg_tracer_udp_sink_set(int argc, VALUE* argv, VALUE obj)
   VALUE kwargs, socket, host, port, receive_buffer_size;
   rb_rg_get_tracer(obj);
 
+  //Ignore pedantic warning errors from the ruby C API
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wpedantic"
   // Scans and validates various supported keyword arguments
   rb_scan_args(argc, argv, ":", &kwargs);
+  #pragma GCC diagnostic pop
+
   if (NIL_P(kwargs)) kwargs = rb_hash_new();
 
   socket = rb_hash_aref(kwargs, ID2SYM(rb_rg_id_socket));
@@ -2064,8 +2076,13 @@ static VALUE rb_rg_tracer_tcp_sink_set(int argc, VALUE* argv, VALUE obj)
   VALUE kwargs, host, port;
   rb_rg_get_tracer(obj);
 
+  //Ignore pedantic warning errors from the ruby C API
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wpedantic"
   // Scans and validates various supported keyword arguments
   rb_scan_args(argc, argv, ":", &kwargs);
+  #pragma GCC diagnostic pop
+
   if (NIL_P(kwargs)) kwargs = rb_hash_new();
 
   // Validates the host argument
@@ -2371,7 +2388,7 @@ static VALUE rb_rg_tracer_blacklist_add0(VALUE obj, VALUE path, VALUE method, lo
     args[0] = path;
     args[1] = method;
     needle = rb_str_format(2, args, rb_str_new2("%s#%s"));
-    res = raxInsert(tracer->blacklist_fq, (unsigned char*)StringValueCStr(needle), RSTRING_LEN(needle), (void *)data, NULL);
+    res = raxInsert(tracer->blacklist_fq, (unsigned char*)StringValueCStr(needle), RSTRING_LEN(needle), (void *)(uintptr_t)data, NULL);
     if (res == 0 && errno == ENOMEM )
     {
 #ifdef RB_RG_DEBUG
@@ -2384,7 +2401,7 @@ static VALUE rb_rg_tracer_blacklist_add0(VALUE obj, VALUE path, VALUE method, lo
   // If only path is set and method is not, add it to the radix tree that tracks the paths rules
   } else if (RTEST(path) && !RTEST(method)) {
     needle = path;
-    res = raxInsert(tracer->blacklist_paths, (unsigned char*)StringValueCStr(needle), RSTRING_LEN(needle), (void *)data, NULL);
+    res = raxInsert(tracer->blacklist_paths, (unsigned char*)StringValueCStr(needle), RSTRING_LEN(needle), (void *)(uintptr_t)data, NULL);
     if (res == 0 && errno == ENOMEM )
     {
 #ifdef RB_RG_DEBUG
@@ -2397,7 +2414,7 @@ static VALUE rb_rg_tracer_blacklist_add0(VALUE obj, VALUE path, VALUE method, lo
   // If only method is set and path is not, add it to the radix tree that tracks the methods rules
   } else if (RTEST(method) && !RTEST(path)) {
     needle = method;
-    res = raxInsert(tracer->blacklist_methods, (unsigned char*)StringValueCStr(needle), RSTRING_LEN(needle), (void *)data, NULL);
+    res = raxInsert(tracer->blacklist_methods, (unsigned char*)StringValueCStr(needle), RSTRING_LEN(needle), (void *)(uintptr_t)data, NULL);
     if (res == 0 && errno == ENOMEM )
     {
 #ifdef RB_RG_DEBUG
@@ -2409,7 +2426,7 @@ static VALUE rb_rg_tracer_blacklist_add0(VALUE obj, VALUE path, VALUE method, lo
     }
   }
   // Fall through - set in the all-of-the-things radix tree
-  res = raxInsert(tracer->blacklist, (unsigned char*)StringValueCStr(needle), RSTRING_LEN(needle), (void *)data, NULL);
+  res = raxInsert(tracer->blacklist, (unsigned char*)StringValueCStr(needle), RSTRING_LEN(needle), (void *)(uintptr_t)data, NULL);
   if (res == 0 && errno == ENOMEM )
   {
 #ifdef RB_RG_DEBUG
@@ -2723,7 +2740,7 @@ static int rb_rg_methodinfo_table_dump_i(st_data_t key, st_data_t val, st_data_t
 {
   rg_method_t *rg_method = (rg_method_t *)val;
   if ((int)val != RG_BLACKLIST_BLACKLISTED) {
-    printf("[WL] %lu %s -> %u\n", key, rg_method->name, rg_method->function_id);
+    printf("[WL] %p %s -> %u\n", (void *)key, rg_method->name, rg_method->function_id);
   }
   return ST_CONTINUE;
 }
@@ -2732,7 +2749,7 @@ static int rb_rg_methodinfo_table_dump_i(st_data_t key, st_data_t val, st_data_t
 static int rb_rg_threadsinfo_table_dump_i(st_data_t key, st_data_t val, st_data_t data)
 {
   rg_thread_t *rg_thread = (rg_thread_t *)val;
-  printf("[TH] %lu parent %d -> %d\n", key, rg_thread->parent_tid, rg_thread->tid);
+  printf("[TH] %p parent %d -> %d\n", (void *)key, rg_thread->parent_tid, rg_thread->tid);
   return ST_CONTINUE;
 }
 
@@ -2740,7 +2757,7 @@ static int rb_rg_threadsinfo_table_dump_i(st_data_t key, st_data_t val, st_data_
 static int rb_rg_tracecontexts_dump_i(st_data_t key, st_data_t val, st_data_t data)
 {
   rb_rg_trace_context_t *rg_trace_context = (rb_rg_trace_context_t *)val;
-  printf("[TC] %ld trace_context: %p thread %lu -> %lu (enabled: %lu)\n", key, (void *)rg_trace_context, rg_trace_context->thread, rg_trace_context->tracepoint, rb_tracepoint_enabled_p(rg_trace_context->tracepoint));
+  printf("[TC] %p trace_context: %p thread %p -> %p (enabled: %p)\n", (void *)key, (void *)rg_trace_context, (void *)rg_trace_context->thread, (void *)rg_trace_context->tracepoint, (void *)rb_tracepoint_enabled_p(rg_trace_context->tracepoint));
   return ST_CONTINUE;
 }
 
@@ -2752,15 +2769,15 @@ static VALUE rb_rg_tracer_diagnostics(VALUE obj)
   rb_rg_get_tracer(obj);
   VALUE thread = rb_thread_current();
   rg_thread_t *th = rb_rg_thread(tracer, thread);
-  printf("#### APM Tracer PID %d obj: %p size: %lu bytes\n", tracer->context->pid, (void *)obj, rb_rg_tracer_size(tracer));
+  printf("#### APM Tracer PID %d obj: %p size: %lu bytes\n", tracer->context->pid, (void *)obj, (unsigned long)rb_rg_tracer_size(tracer));
   printf("Methods: %d threads: %d nooped: %d\n", tracer->methods, tracer->threads, tracer->noop);
   printf("[Pointers] encoder context: %p threadsinfo: %p methodinfo: %p sink_data: %p batch: %p bipbuf: %p\n", (void *)tracer->context, (void *)tracer->threadsinfo, (void *)tracer->methodinfo, (void *)&tracer->sink_data, (void *)&tracer->sink_data.batch, (void *)tracer->sink_data.ringbuf.bipbuf);
-  printf("[Execution context] Raygun thread: %d Ruby current thread: %p thread group: %ld\n", th->tid, (void *)thread, rb_rg_thread_group(GET_THREAD()));
+  printf("[Execution context] Raygun thread: %d Ruby current thread: %p thread group: %p\n", th->tid, (void *)thread, (void *)rb_rg_thread_group(GET_THREAD()));
   printf("[Ruby threads] timer thread: %p sink thread: %p\n", (void *)tracer->timer_thread, (void *)tracer->sink_thread);
   if (tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP) {
-    printf("[Encoder] batched: %lu raw: %lu flushed: %lu resets: %lu batches: %lu\n", tracer->sink_data.encoded_batched, tracer->sink_data.encoded_raw, tracer->sink_data.flushed, tracer->sink_data.resets, tracer->sink_data.batches);
-    printf("[Dispatch] batch count: %d sequence: %d batch pid: %d sink running: %d bytes sent: %lu failed sends: %lu jittered_sends: %lu\n", tracer->sink_data.batch.count, tracer->sink_data.batch.length, tracer->sink_data.batch.pid, tracer->sink_data.running, tracer->sink_data.bytes_sent, tracer->sink_data.failed_sends, tracer->sink_data.jittered_sends);
-    printf("[Buffer] size: %d max used: %lu used: %d unused: %d\n", bipbuf_size(tracer->sink_data.ringbuf.bipbuf), tracer->sink_data.max_buf_used, bipbuf_used(tracer->sink_data.ringbuf.bipbuf), bipbuf_unused(tracer->sink_data.ringbuf.bipbuf));
+    printf("[Encoder] batched: %lu raw: %lu flushed: %lu resets: %lu batches: %lu\n", (unsigned long) tracer->sink_data.encoded_batched, (unsigned long) tracer->sink_data.encoded_raw, (unsigned long) tracer->sink_data.flushed, (unsigned long) tracer->sink_data.resets, (unsigned long)tracer->sink_data.batches);
+    printf("[Dispatch] batch count: %d sequence: %d batch pid: %d sink running: %d bytes sent: %lu failed sends: %lu jittered_sends: %lu\n", tracer->sink_data.batch.count, tracer->sink_data.batch.length, tracer->sink_data.batch.pid, tracer->sink_data.running, (unsigned long) tracer->sink_data.bytes_sent, (unsigned long) tracer->sink_data.failed_sends, (unsigned long) tracer->sink_data.jittered_sends);
+    printf("[Buffer] size: %d max used: %lu used: %d unused: %d\n", bipbuf_size(tracer->sink_data.ringbuf.bipbuf), (unsigned long) tracer->sink_data.max_buf_used, bipbuf_used(tracer->sink_data.ringbuf.bipbuf), bipbuf_unused(tracer->sink_data.ringbuf.bipbuf));
   }
   printf("#### Method table:\n");
   st_foreach(tracer->methodinfo, rb_rg_methodinfo_table_dump_i, 0);

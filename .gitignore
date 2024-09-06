@@ -16,3 +16,5 @@ lib/raygun/*.so
 .vscode/
 vendor/
 .gdb_history
+.idea/
+.vagrant/

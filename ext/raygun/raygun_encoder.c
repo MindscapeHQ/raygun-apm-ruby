@@ -292,6 +292,9 @@ rg_short_t rg_encode_variableinfo_size(const rg_variable_info_t *variableinfo)
     case RG_VT_UNSIGNED_LONG:
          size += sizeof(variableinfo->as.t_unsigned_long);
          break;
+    case RG_VT_VOID:
+         size += 0;
+         break;
   }
   return size;
 }
@@ -389,7 +392,7 @@ rg_short_t rg_encode_end_size(const rg_event_t *event)
   return RG_MIN_PAYLOAD +
     sizeof(event->data.end.function_id) +
     sizeof(event->data.end.tail_call) +
-    rg_encode_variableinfo_size(&event->data.end.returnvalue);
+    rg_encode_variableinfo_size((rg_variable_info_t*)(&event->data.end.returnvalue));
 }
 
 // Encodes CT_END as per spec
@@ -399,7 +402,7 @@ rg_short_t rg_encode_end(rg_byte_t *ptr, rg_event_t *event)
   rg_short_t size;
   memcpy(ptr, &event->data.end.function_id, sizeof(event->data.end.function_id)); ptr+= sizeof(event->data.end.function_id);
   memcpy(ptr, &event->data.end.tail_call, sizeof(event->data.end.tail_call)); ptr+= sizeof(event->data.end.tail_call);
-  ptr+= rg_encode_variableinfo(ptr, &event->data.end.returnvalue);
+  ptr+= rg_encode_variableinfo(ptr, (rg_variable_info_t*)(&event->data.end.returnvalue));
   size = (rg_short_t)(ptr - offset);
 #ifdef RG_DEBUG
   assert(size + RG_MIN_PAYLOAD == rg_encode_end_size(event));

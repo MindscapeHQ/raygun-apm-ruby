@@ -150,9 +150,6 @@ void rb_rg_tracer_mark(void *ptr);
 void rb_rg_tracer_free(void *ptr);
 size_t rb_rg_tracer_size(const void *ptr);
 
-static void rb_rg_process_type(const rb_rg_tracer_t *tracer);
-static void rb_rg_process_frequency(const rb_rg_tracer_t *tracer, rg_frequency_t frequency);
-
 // Optimized API to infer the Thread Group from a thread - skips a Ruby method call
 VALUE rb_rg_thread_group(rb_thread_t *th);
 

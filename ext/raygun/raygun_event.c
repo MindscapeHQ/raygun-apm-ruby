@@ -234,7 +234,7 @@ static VALUE rb_rg_event_aset(VALUE obj, VALUE attr, VALUE val)
     event->data.begin_transaction.api_key.encoding = RG_STRING_ENCODING_ASCII;
     rb_rg_encode_string(&event->data.begin_transaction.api_key, val, Qnil);
   } else {
-    rb_raise(rb_eRaygunFatal, "Invalid attribute name:%"PRIsVALUE"", attr);
+    rb_raise(rb_eRaygunFatal, "Invalid attribute name:%p", (void*)attr);
   }
   event->length = rg_encode_size(event);
   RB_GC_GUARD(attr);
@@ -345,7 +345,7 @@ static VALUE rb_rg_event_aref(VALUE obj, VALUE attr)
       val = rb_str_new(event->data.begin_transaction.process_type.string, event->data.begin_transaction.process_type.length);
     }
   } else {
-    rb_raise(rb_eRaygunFatal, "Invalid attribute name:%"PRIsVALUE"", attr);
+    rb_raise(rb_eRaygunFatal, "Invalid attribute name:%p", (void*)attr);
   }
   RB_GC_GUARD(attr);
   return val;

@@ -5,6 +5,7 @@
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
+#pragma GCC diagnostic ignored "-Woverflow"
 #include <ruby/ruby.h>
 #include <ruby/encoding.h>
 #include <ruby/debug.h>
@@ -78,5 +79,8 @@ rg_variable_info_t rb_rg_vt_coerce(VALUE name, VALUE obj, VALUE ecopts);
 void rb_rg_variable_info_init(rg_variable_info_t *var, VALUE obj, rg_variable_t type);
 
 void _init_raygun_coercion();
+
+//rb_protect wrappers
+VALUE rb_protect_rb_big2ull(VALUE arg);
 
 #endif

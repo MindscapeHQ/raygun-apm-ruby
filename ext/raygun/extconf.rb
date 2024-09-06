@@ -16,11 +16,12 @@ dir_config('raygun')
 # To allow for swapping out the compiler - clang in favour of gcc for example
 RbConfig::MAKEFILE_CONFIG['CC'] = ENV['CC'] if ENV['CC']
 
-# Pendatic about all the things
+# Pedantic about all the things
 append_cflags '-pedantic'
 append_cflags '-Wall'
-append_cflags '-Werror=switch'
+append_cflags '-Werror'
 append_cflags '-std=c99'
+append_cflags '-std=gnu99'
 append_cflags '-fdeclspec'
 append_cflags '-fms-extensions'
 append_cflags '-ggdb3'
