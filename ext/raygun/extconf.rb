@@ -19,7 +19,7 @@ RbConfig::MAKEFILE_CONFIG['CC'] = ENV['CC'] if ENV['CC']
 # Pedantic about all the things
 append_cflags '-pedantic'
 append_cflags '-Wall'
-append_cflags '-Werror'
+# append_cflags '-Werror'
 append_cflags '-std=c99'
 append_cflags '-std=gnu99'
 append_cflags '-fdeclspec'

@@ -23,7 +23,7 @@ Gem::Specification.new do |spec|
   spec.extensions = ["ext/raygun/extconf.rb"]
   spec.required_ruby_version = '>= 2.5.0'
 
-  spec.add_development_dependency "debase-ruby_core_source", "~> 0.10.14"
+  spec.add_development_dependency "debase-ruby_core_source", "~> 3"
   spec.add_development_dependency "bundler", "~> 2.2.15"
   spec.add_development_dependency "rake", "~> 13.0.3"
   spec.add_development_dependency "minitest", "~> 5.14.4"
