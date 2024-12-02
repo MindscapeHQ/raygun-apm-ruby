@@ -12,7 +12,8 @@ Vagrant.configure("2") do |config|
 
   # Every Vagrant development environment requires a box. You can search for
   # boxes at https://vagrantcloud.com/search.
-  config.vm.box = "ubuntu/kinetic64"
+  config.vm.box = "ubuntu/jammy64"
+  config.vm.box_version = "20231205.0.0"
 
   # Disable automatic box update checking. If you disable this, then
   # boxes will only be checked for updates when the user runs
@@ -67,48 +68,83 @@ Vagrant.configure("2") do |config|
   # Ansible, Chef, Docker, Puppet and Salt are also available. Please see the
   # documentation for more information about their specific syntax and use.
  config.vm.provision "shell", inline: <<-SHELL
-    # Update packages
-    sudo apt-get update -y
-
-    # Install prerequisites
-    sudo apt-get install -y \
+  #!/bin/bash
+  
+  # Update packages
+  sudo apt-get update -y
+  
+  # Install prerequisites
+  sudo apt-get install -y \
       apt-transport-https \
       ca-certificates \
       curl \
       gnupg-agent \
-      software-properties-common
-
-    # Add Docker repository
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-    # Update packages again
-    sudo apt-get update -y
-
-    # Install Docker
-    sudo apt-get install -y docker-ce docker-ce-cli containerd.io
-
-    # Add Vagrant user to the Docker group
-    sudo usermod -aG docker vagrant
-
-    # Install Docker Compose
-    sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    sudo chmod +x /usr/local/bin/docker-compose
-
-    # Enable and start Docker service
-    sudo systemctl enable docker
-    sudo systemctl start docker
-
-    # Install Ruby and dependencies
-    sudo apt-get install -y ruby-full build-essential zlib1g-dev
-
-    # Configure gem installation location for user
-    echo 'export GEM_HOME="$HOME/gems"' >> ~/.bashrc
-    echo 'export PATH="$HOME/gems/bin:$PATH"' >> ~/.bashrc
-    source ~/.bashrc
-
-    # Install Bundler
-    gem install bundler
-
+      software-properties-common \
+      libffi-dev \
+      libgdbm-dev \
+      libncurses5-dev \
+      libreadline-dev \
+      libssl-dev \
+      libyaml-dev \
+      zlib1g-dev \
+      libgmp-dev
+  wait_for_apt
+  
+  # Add Docker repository
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+  echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  
+  # Update packages again
+  sudo apt-get update -y
+  
+  # Install Docker
+  sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+  
+  # Add Vagrant user to the Docker group
+  sudo usermod -aG docker vagrant
+  
+  # Install Docker Compose
+  sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+  sudo chmod +x /usr/local/bin/docker-compose
+  
+  # Enable and start Docker service
+  sudo systemctl enable docker
+  sudo systemctl start docker
+  
+  # Switch to vagrant user for rbenv installation
+  sudo -i -u vagrant bash << 'EOOF'
+  # Install rbenv
+  git clone https://github.com/rbenv/rbenv.git ~/.rbenv
+  cd ~/.rbenv && src/configure && make -C src
+  
+  # Add rbenv to PATH
+  echo 'export PATH="$HOME/.rbenv/bin:$PATH"' >> ~/.bashrc
+  echo 'eval "$(rbenv init -)"' >> ~/.bashrc
+  
+  # Install ruby-build plugin
+  git clone https://github.com/rbenv/ruby-build.git ~/.rbenv/plugins/ruby-build
+  
+  # Load rbenv
+  export PATH="$HOME/.rbenv/bin:$PATH"
+  eval "$(rbenv init -)"
+  
+  # Install Ruby
+  RUBY_CONFIGURE_OPTS="--with-openssl-dir=/usr/lib/ssl" rbenv install 3.2.2
+  rbenv global 3.2.2
+  
+  # Install Bundler
+  gem install bundler
+  
+  # Verify installations
+  echo "Verifying installations..."
+  ruby -v
+  bundler -v
+  rbenv -v
+  
+  # Configure gem installation location
+  export GEM_HOME="$HOME/gems"
+  export PATH="$HOME/gems/bin:$PATH"
+  echo 'export GEM_HOME="$HOME/gems"' >> ~/.bashrc
+  echo 'export PATH="$HOME/gems/bin:$PATH"' >> ~/.bashrc
   SHELL
 end
