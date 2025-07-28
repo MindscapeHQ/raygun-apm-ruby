@@ -1,0 +1,164 @@
+name: Platform Matrix Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  # Test native compilation on different platforms
+  native-compile:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux builds
+          - os: ubuntu-latest
+            ruby: '2.7'
+            platform: 'x86_64-linux'
+          - os: ubuntu-latest
+            ruby: '3.3'
+            platform: 'x86_64-linux'
+          
+          # macOS x86_64 builds
+          - os: macos-13
+            ruby: '2.7'
+            platform: 'x86_64-darwin'
+          - os: macos-13
+            ruby: '3.3'
+            platform: 'x86_64-darwin'
+          
+          # macOS ARM64 builds
+          - os: macos-latest
+            ruby: '2.7'
+            platform: 'arm64-darwin'
+          - os: macos-latest
+            ruby: '3.1'
+            platform: 'arm64-darwin'
+          - os: macos-latest
+            ruby: '3.2'
+            platform: 'arm64-darwin'
+          - os: macos-latest
+            ruby: '3.3'
+            platform: 'arm64-darwin'
+    
+    name: ${{ matrix.platform }} - Ruby ${{ matrix.ruby }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: ${{ matrix.ruby }}
+        bundler-cache: true
+    
+    - name: Show system info
+      run: |
+        echo "=== System Information ==="
+        uname -a
+        echo "=== Ruby Information ==="
+        ruby -v
+        ruby -e "puts RUBY_PLATFORM"
+        echo "=== Compiler Information ==="
+        if command -v gcc &> /dev/null; then
+          gcc --version | head -1
+        fi
+        if command -v clang &> /dev/null; then
+          clang --version | head -1
+        fi
+    
+    - name: Compile extension
+      run: |
+        bundle exec rake clean
+        bundle exec rake compile
+    
+    - name: Verify architecture
+      run: |
+        echo "=== Checking compiled extension ==="
+        bundle exec ruby -e "
+          require 'rbconfig'
+          puts 'RbConfig ARCH: ' + RbConfig::CONFIG['arch']
+          puts 'RUBY_PLATFORM: ' + RUBY_PLATFORM
+        "
+        
+        # Find and check the compiled extension
+        find . -name "raygun_ext.bundle" -o -name "raygun_ext.so" | grep -v vendor | while read ext; do
+          echo "Found extension: $ext"
+          file "$ext"
+          
+          # Platform-specific checks
+          case "${{ matrix.platform }}" in
+            *-linux)
+              objdump -f "$ext" | grep architecture || true
+              ;;
+            *-darwin)
+              lipo -info "$ext" 2>/dev/null || true
+              otool -hv "$ext" | head -5 || true
+              ;;
+          esac
+        done
+    
+    - name: Test extension loading
+      run: |
+        bundle exec ruby -e "
+          begin
+            require 'raygun/apm'
+            puts 'SUCCESS: Extension loaded successfully'
+            
+            # Check if native methods are available
+            if defined?(Raygun::Apm::Tracer)
+              puts 'SUCCESS: Tracer class is available'
+            end
+          rescue LoadError => e
+            puts 'FAILED: ' + e.message
+            exit 1
+          end
+        "
+    
+    - name: Upload compiled extension
+      uses: actions/upload-artifact@v4
+      with:
+        name: extension-${{ matrix.platform }}-ruby${{ matrix.ruby }}
+        path: |
+          lib/raygun/raygun_ext.*
+          tmp/**/raygun_ext.*
+        retention-days: 7
+        if-no-files-found: error
+
+  # Cross-compilation test (if rake-compiler-dock is properly configured)
+  cross-compile:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: ['x86_64-linux', 'x86-mingw32', 'x64-mingw32']
+    
+    name: Cross-compile for ${{ matrix.platform }}
+    continue-on-error: true  # These might fail without proper setup
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.3'
+        bundler-cache: true
+    
+    - name: Install Docker
+      run: |
+        if ! command -v docker &> /dev/null; then
+          echo "Docker not available, skipping cross-compilation"
+          exit 0
+        fi
+    
+    - name: Cross compile
+      run: |
+        if command -v docker &> /dev/null; then
+          bundle exec rake cross compile RUBY_CC_VERSION=3.3.0
+        else
+          echo "Skipping cross-compilation (Docker not available)"
+        fi

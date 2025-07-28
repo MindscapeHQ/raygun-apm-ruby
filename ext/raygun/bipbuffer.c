@@ -20,7 +20,7 @@ size_t bipbuf_sizeof(const unsigned int size)
     return sizeof(bipbuf_t) + size;
 }
 
-int bipbuf_unused(const bipbuf_t* me)
+size_t bipbuf_unused(const bipbuf_t* me)
 {
     if (1 == me->b_inuse)
         /* distance between region B and region A */
@@ -29,7 +29,7 @@ int bipbuf_unused(const bipbuf_t* me)
         return me->size - me->a_end;
 }
 
-int bipbuf_size(const bipbuf_t* me)
+size_t bipbuf_size(const bipbuf_t* me)
 {
     return me->size;
 }
@@ -76,7 +76,7 @@ static void __check_for_switch_to_b(bipbuf_t* me)
 int bipbuf_offer(bipbuf_t* me, const unsigned char *data, const int size)
 {
     /* not enough space */
-    if (bipbuf_unused(me) < size)
+    if (bipbuf_unused(me) < (size_t)size)
         return 0;
 
     if (1 == me->b_inuse)

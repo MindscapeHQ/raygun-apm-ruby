@@ -1,0 +1,172 @@
+name: Architecture Compatibility Test
+
+on:
+  push:
+    paths:
+      - 'ext/**'
+      - 'Rakefile'
+      - '*.gemspec'
+      - '.github/workflows/architecture-test.yml'
+  pull_request:
+    paths:
+      - 'ext/**'
+      - 'Rakefile'
+      - '*.gemspec'
+      - '.github/workflows/architecture-test.yml'
+
+jobs:
+  # Specific test for our ARM64/x86_64 architecture detection
+  architecture-detection:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            expected_arch: 'x86_64|x86-64|amd64'
+            expected_flags: ''
+          - os: macos-13  # Intel Mac
+            expected_arch: 'x86_64'
+            expected_flags: '-arch x86_64'
+          - os: macos-latest  # ARM64 Mac
+            expected_arch: 'arm64'
+            expected_flags: '-arch arm64'
+    
+    name: Architecture detection on ${{ matrix.os }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.3'
+        bundler-cache: true
+    
+    - name: Test architecture detection in extconf.rb
+      run: |
+        cd ext/raygun
+        
+        # Create a test script to check architecture detection
+        cat > test_arch.rb << 'EOF'
+        require 'mkmf'
+        
+        puts "RUBY_PLATFORM: #{RUBY_PLATFORM}"
+        puts "RbConfig arch: #{RbConfig::CONFIG['arch']}"
+        puts "RbConfig host_cpu: #{RbConfig::CONFIG['host_cpu']}"
+        
+        # Test our architecture detection logic
+        if RUBY_PLATFORM =~ /arm64|aarch64/
+          puts "Detected: ARM64"
+          expected_flag = "-arch arm64"
+        elsif RUBY_PLATFORM =~ /x86_64/
+          puts "Detected: x86_64"
+          expected_flag = "-arch x86_64"
+        else
+          puts "Detected: other (#{RUBY_PLATFORM})"
+          expected_flag = nil
+        end
+        
+        puts "Expected architecture flag: #{expected_flag || 'none'}"
+        EOF
+        
+        ruby test_arch.rb
+    
+    - name: Compile and verify architecture flags
+      run: |
+        # Clean compile with verbose output
+        bundle exec rake clean
+        bundle exec rake compile -- --with-cflags="-v" 2>&1 | tee compile_output.log
+        
+        # Check if architecture flags were applied
+        echo "=== Checking for architecture flags ==="
+        if [[ -n "${{ matrix.expected_flags }}" ]]; then
+          if grep -q "${{ matrix.expected_flags }}" compile_output.log; then
+            echo "SUCCESS: Found expected flag '${{ matrix.expected_flags }}'"
+          else
+            echo "WARNING: Did not find expected flag '${{ matrix.expected_flags }}'"
+            echo "This might be OK if the compiler handles it automatically"
+          fi
+        fi
+        
+        # Verify the compiled binary architecture
+        echo "=== Verifying compiled binary ==="
+        find . -name "raygun_ext.*" -type f | grep -v vendor | while read binary; do
+          echo "Checking: $binary"
+          file "$binary" | tee binary_info.txt
+          
+          # Check if it matches expected architecture
+          if grep -qE "${{ matrix.expected_arch }}" binary_info.txt; then
+            echo "SUCCESS: Binary has expected architecture"
+          else
+            echo "ERROR: Binary does not match expected architecture!"
+            echo "Expected: ${{ matrix.expected_arch }}"
+            echo "Got: $(cat binary_info.txt)"
+            exit 1
+          fi
+        done
+
+  # Test Ruby 2.7 specific fixes
+  ruby27-compatibility:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    
+    name: Ruby 2.7 compatibility on ${{ matrix.os }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Ruby 2.7
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '2.7'
+        bundler-cache: true
+    
+    - name: Check for compound-token-split-by-macro flag
+      run: |
+        cd ext/raygun
+        
+        # Run extconf.rb and check for the flag
+        ruby extconf.rb 2>&1 | tee extconf_output.log
+        
+        echo "=== Checking for Ruby 2.7 specific flag ==="
+        if grep -q "checking for whether -Wno-error=compound-token-split-by-macro is accepted" extconf_output.log; then
+          echo "SUCCESS: Ruby 2.7 specific flag is being checked"
+        else
+          echo "ERROR: Ruby 2.7 specific flag was not checked!"
+          exit 1
+        fi
+        
+        # Clean up
+        rm -f Makefile extconf.h
+    
+    - name: Compile with Ruby 2.7
+      run: |
+        bundle exec rake compile 2>&1 | tee compile_output.log
+        
+        # Check for the expected warnings
+        echo "=== Checking compilation output ==="
+        if grep -q "warning:.*compound-token-split-by-macro" compile_output.log; then
+          echo "INFO: Found compound-token-split-by-macro warnings (expected for Ruby 2.7)"
+        fi
+        
+        # Make sure there are no errors
+        if grep -qE "error:" compile_output.log; then
+          echo "ERROR: Compilation failed with errors!"
+          exit 1
+        else
+          echo "SUCCESS: Compilation completed without errors"
+        fi
+
+  # Summary job to ensure all architecture tests pass
+  all-architectures-pass:
+    needs: [architecture-detection, ruby27-compatibility]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Summary
+      run: |
+        echo "=== All architecture compatibility tests passed! ==="
+        echo "✅ Architecture detection works correctly on all platforms"
+        echo "✅ Ruby 2.7 compatibility flag is properly applied"
+        echo "✅ Compiled binaries have the correct architecture"

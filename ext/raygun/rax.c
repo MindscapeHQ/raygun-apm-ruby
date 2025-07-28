@@ -1,5 +1,9 @@
 #pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
+#ifdef __GNUC__
+#ifndef __clang__
 #pragma GCC diagnostic ignored "-Wdiscarded-qualifiers"
+#endif
+#endif
 /* Rax -- A radix tree implementation.
  *
  * Copyright (c) 2017-2018, Salvatore Sanfilippo <antirez at gmail dot com>
@@ -195,7 +199,7 @@ raxNode *raxNewNode(size_t children, int datafield) {
     node->iskey = 0;
     node->isnull = 0;
     node->iscompr = 0;
-    node->size = children;
+    node->size = (uint32_t)children;
     return node;
 }
 
@@ -984,7 +988,7 @@ raxNode *raxRemoveChild(raxNode *parent, raxNode *child) {
 
     /* 3. Remove the edge and the pointer by memmoving the remaining children
      *    pointer and edge bytes one position before. */
-    int taillen = parent->size - (e - parent->data) - 1;
+    int taillen = (int) (parent->size - (e - parent->data) - 1);
     debugf("raxRemoveChild tail len: %d\n", taillen);
     memmove(e,e+1,taillen);
 
@@ -1866,7 +1870,7 @@ void raxRecursiveShow(int level, int lpad, raxNode *n) {
     }
     raxNode **cp = raxNodeFirstChildPtr(n);
     for (int i = 0; i < numchildren; i++) {
-        char *branch = " `-(%c) ";
+        const char *branch = " `-(%c) ";
         if (numchildren > 1) {
             printf("\n");
             for (int j = 0; j < lpad; j++) putchar(' ');
