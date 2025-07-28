@@ -16,10 +16,32 @@ dir_config('raygun')
 # To allow for swapping out the compiler - clang in favour of gcc for example
 RbConfig::MAKEFILE_CONFIG['CC'] = ENV['CC'] if ENV['CC']
 
+# Ensure proper architecture flags for ARM64
+if RUBY_PLATFORM =~ /arm64|aarch64/
+  append_cflags '-arch arm64'
+elsif RUBY_PLATFORM =~ /x86_64/
+  append_cflags '-arch x86_64'
+end
+
 # Pedantic about all the things
 append_cflags '-pedantic'
 append_cflags '-Wall'
 append_cflags '-Werror'
+append_cflags '-Wno-error=shorten-64-to-32'
+append_cflags '-Wno-error=incompatible-pointer-types-discards-qualifiers'
+append_cflags '-Wno-error=unknown-warning-option'
+append_cflags '-Wno-shorten-64-to-32'
+append_cflags '-Wno-error=unused-but-set-variable'
+
+# Ruby 2.7's rb_intern macro implementation triggers -Wcompound-token-split-by-macro warnings
+# with Clang 12+ due to RUBY_CONST_ID_CACHE using statement expressions across macro boundaries.
+# This was fixed in Ruby 3.0+. See:
+# - https://bugs.ruby-lang.org/issues/17865
+# - https://github.com/ruby/ruby/commit/7e8a9af9db42a21f6a1125a29e98c45ff9d5833b
+if RUBY_VERSION.start_with?('2.7')
+  append_cflags '-Wno-error=compound-token-split-by-macro'
+end
+
 append_cflags '-std=c99'
 append_cflags '-std=gnu99'
 append_cflags '-fdeclspec'

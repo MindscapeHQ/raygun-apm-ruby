@@ -25,7 +25,7 @@ exttask = Rake::ExtensionTask.new('raygun') do |ext|
   ext.lib_dir = 'lib/raygun'
   ext.gem_spec = gemspec
   ext.cross_compile = true
-  ext.cross_platform = %w[x86-mingw32 x64-mingw32 x86-linux x86_64-linux universal-darwin]
+  ext.cross_platform = %w[x86-mingw32 x64-mingw32 x86-linux x86_64-linux universal-darwin arm64-darwin x86_64-darwin]
   CLEAN.include 'tmp', 'lib/**/raygun_ext.*'
   CLEAN.include *rubies_to_clean
 end

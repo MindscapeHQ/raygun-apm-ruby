@@ -1760,7 +1760,7 @@ static void rb_rg_tracing_hook_i(VALUE tpval, void *data)
         return;
       }
     }
-    //if we are deep into 3rd party libs, do not report sync activity like mutex synchronise, mutex lock / unlock
+    //ifwe are deep into 3rd party libs, do not report sync activity like mutex synchronise, mutex lock / unlock
     //as it will cause method to have children that span for longer than method itself
      if (rg_method->source == (rg_method_source_t)RG_METHOD_SOURCE_WAIT_FOR_SYNCHRONIZATION) {
       
@@ -2777,7 +2777,7 @@ static VALUE rb_rg_tracer_diagnostics(VALUE obj)
   if (tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP) {
     printf("[Encoder] batched: %lu raw: %lu flushed: %lu resets: %lu batches: %lu\n", (unsigned long) tracer->sink_data.encoded_batched, (unsigned long) tracer->sink_data.encoded_raw, (unsigned long) tracer->sink_data.flushed, (unsigned long) tracer->sink_data.resets, (unsigned long)tracer->sink_data.batches);
     printf("[Dispatch] batch count: %d sequence: %d batch pid: %d sink running: %d bytes sent: %lu failed sends: %lu jittered_sends: %lu\n", tracer->sink_data.batch.count, tracer->sink_data.batch.length, tracer->sink_data.batch.pid, tracer->sink_data.running, (unsigned long) tracer->sink_data.bytes_sent, (unsigned long) tracer->sink_data.failed_sends, (unsigned long) tracer->sink_data.jittered_sends);
-    printf("[Buffer] size: %d max used: %lu used: %d unused: %d\n", bipbuf_size(tracer->sink_data.ringbuf.bipbuf), (unsigned long) tracer->sink_data.max_buf_used, bipbuf_used(tracer->sink_data.ringbuf.bipbuf), bipbuf_unused(tracer->sink_data.ringbuf.bipbuf));
+    printf("[Buffer] size: %zu max used: %lu used: %d unused: %zu\n", bipbuf_size(tracer->sink_data.ringbuf.bipbuf), (unsigned long) tracer->sink_data.max_buf_used, bipbuf_used(tracer->sink_data.ringbuf.bipbuf), bipbuf_unused(tracer->sink_data.ringbuf.bipbuf));
   }
   printf("#### Method table:\n");
   st_foreach(tracer->methodinfo, rb_rg_methodinfo_table_dump_i, 0);
@@ -2985,3 +2985,20 @@ void _init_raygun_tracer()
   // Debugging specific - requires PROTON_DIAGNOSTICS to be set
   rb_define_method(rb_cRaygunTracer, "diagnostics", rb_rg_tracer_diagnostics, 0);
 }
+
+// Wake up the background thread to send data.
+// We do this by writing a single byte to the pipe.
+// TODO: This function appears to be unused and references a non-existent struct member
+#if 0
+static void rb_rg_tracer_wakeup_background_thread(rb_rg_tracer_t* tracer)
+{
+  if (tracer->background_thread_pipe[1] == FAKE_PIPE_FOR_TESTING) {
+    return;
+  }
+  write(tracer->background_thread_pipe[1], "w", 1);
+}
+#endif
+
+// Clear the pipe that we use to wake up the background thread.
+// This is to avoid the pipe buffer filling up with wakeup bytes.
+// ... existing code ...

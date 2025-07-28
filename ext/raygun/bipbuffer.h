@@ -59,7 +59,7 @@ unsigned char *bipbuf_poll(bipbuf_t* me, const unsigned int size);
 
 /**
  * @return the size of the bipbuffer */
-int bipbuf_size(const bipbuf_t* me);
+size_t bipbuf_size(const bipbuf_t* me);
 
 /**
  * @return 1 if buffer is empty; 0 otherwise */
@@ -67,10 +67,10 @@ int bipbuf_is_empty(const bipbuf_t* me);
 
 /**
  * @return how much space we have assigned */
-int bipbuf_used(const bipbuf_t* cb);
+int bipbuf_used(const bipbuf_t* me);
 
 /**
  * @return bytes of unused space */
-int bipbuf_unused(const bipbuf_t* me);
+size_t bipbuf_unused(const bipbuf_t* me);
 
 #endif /* BIPBUFFER_H */
