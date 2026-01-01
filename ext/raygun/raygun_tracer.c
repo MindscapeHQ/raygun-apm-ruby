@@ -31,7 +31,8 @@ static ID rb_rg_id_send,
     rb_rg_id_write,
     rb_rg_id_tcp_socket,
     rb_rg_id_new,
-    rb_rg_id_default;
+    rb_rg_id_default,
+    rb_rg_id_group;
 
 static VALUE rb_rg_cThGroup;
 static VALUE rb_rg_cTcpSocket;
@@ -69,6 +70,37 @@ void __stack_chk_fail(void)
 #endif
 
 static VALUE rb_rg_tracer_initialise_tcp_socket(VALUE obj);
+static VALUE rb_rg_thread_group_from_value(VALUE thread);
+
+// Cached thread data type descriptor for safe thread struct extraction
+// This is lazily initialized on first use from rb_thread_current()
+// Using this pattern avoids TLS crashes on ARM64 during shutdown with Ruby 3.3+ M:N scheduler
+static const rb_data_type_t *rb_rg_thread_data_type = NULL;
+
+// Safe thread struct extraction from VALUE thread object
+// Uses lazy-initialized type descriptor cache pattern (inspired by Datadog dd-trace-rb)
+// This approach:
+// 1. Uses rb_thread_current() as a safe public API to bootstrap the type descriptor
+// 2. Uses rb_check_typeddata() for type-safe extraction with validation
+// 3. Avoids rb_current_execution_context() which can crash during TLS access on ARM64
+//
+rb_thread_t *rb_rg_thread_struct_from_object(VALUE thread)
+{
+  // Lazy initialization of the thread data type descriptor
+  // We bootstrap from rb_thread_current() which is always safe to call
+  if (UNLIKELY(rb_rg_thread_data_type == NULL)) {
+    VALUE current = rb_thread_current();
+    if (NIL_P(current)) {
+      // Should never happen in normal operation, but be defensive
+      return NULL;
+    }
+    rb_rg_thread_data_type = RTYPEDDATA_TYPE(current);
+  }
+  
+  // Type-checked extraction of the thread struct
+  // rb_check_typeddata validates the type before returning the pointer
+  return (rb_thread_t *)rb_check_typeddata(thread, rb_rg_thread_data_type);
+}
 
 // Log errors silenced in timer and dispatch threads by rb_protect
 static void rb_rg_log_silenced_error()
@@ -79,16 +111,31 @@ static void rb_rg_log_silenced_error()
   printf("[Raygun APM] error: %s\n", RSTRING_PTR(msg));
 }
 
-// A small wrapper called on shutdown that infers if the currently running thread is scheduled to be killed or not
-int
-rb_rg_current_thread_to_be_killed()
+// A small wrapper called on shutdown that infers if the currently running thread is scheduled to be killed or not.
+// 
+// IMPORTANT: Ruby 3.3+ introduced the M:N thread scheduler where M Ruby threads are managed by N native threads.
+// On ARM64 (aarch64), rb_current_ec() is a function call that can return NULL for threads spawned via 
+// rb_thread_create() before the execution context is fully set up. Calling GET_THREAD() in this scenario
+// causes a segfault when dereferencing th->to_kill or th->status.
+//
+// On Ruby 3.3+, we intentionally skip this optimization and rely solely on rb_thread_check_ints() in
+// rb_rg_thread_wait_for() to handle pending kills/interrupts via the VM's interrupt mechanism.
+//
+static int
+rb_rg_current_thread_to_be_killed(void)
 {
+#if RG_RUBY_VER_GE(3, 3)
+  // On Ruby 3.3+ with M:N scheduler, we cannot safely access rb_thread_t internals
+  // from extension-spawned threads. The VM will handle kill/interrupts via
+  // rb_thread_check_ints() which is called in rb_rg_thread_wait_for().
+  return 0;
+#else
   rb_thread_t *th = GET_THREAD();
-
   if (th->to_kill || th->status == THREAD_KILLED) {
-	  return true;
+    return 1;
   }
-  return false;
+  return 0;
+#endif
 }
 
 // A helper for pausing the current thread for a specific period of time but with awareness of the thread state (to kill or killed), which skips any sleep
@@ -870,6 +917,7 @@ static VALUE rb_rg_tcp_sink_thread(void *ptr)
 {
   int status = 0;
   int bytes_to_send_on_wakeup = 0;
+  (void)bytes_to_send_on_wakeup; // Suppress unused variable warning - kept for potential future use/debugging
   rg_short_t size;
   rb_rg_sink_data_t *data = (rb_rg_sink_data_t *)ptr;
   struct timeval tv;
@@ -1628,7 +1676,9 @@ static void rb_rg_tracing_hook_i(VALUE tpval, void *data)
   // OR any threads that has the same Thread Group assigned, meaning they were spawned by the thread that is pinned to the
   // trace context.
   if (UNLIKELY(thread != trace_context->thread)) {
-    thgroup = rb_rg_thread_group(GET_THREAD());
+    // Use rb_rg_thread_group_from_value which calls Thread#group via the public API
+    // This avoids GET_THREAD() which is problematic on Ruby 3.3+ M:N scheduler on ARM64
+    thgroup = rb_rg_thread_group_from_value(thread);
     if (LIKELY(thgroup != rb_rg_DefaultThreadGroup && thgroup == trace_context->thgroup)) {
       // Let tid be that of the current executing thread as it's part of the trace context's thread
       // group and thus it was spawned within the trace context transaction boundaries and thus we
@@ -2608,6 +2658,16 @@ VALUE rb_rg_thread_group(rb_thread_t *th)
   }
 }
 
+// Version that takes a VALUE thread instead of rb_thread_t*
+// Used on Ruby 3.3+ where we cannot safely use GET_THREAD() or rb_thread_ptr()
+// Falls back to calling the Ruby method Thread#group
+static VALUE rb_rg_thread_group_from_value(VALUE thread)
+{
+  // Use the public Ruby API to get the thread group via Thread#group
+  // rb_rg_id_group is cached at extension init time to avoid repeated rb_intern calls
+  return rb_funcall(thread, rb_rg_id_group, 0);
+}
+
 VALUE rb_rg_thread_group_add(VALUE thgroup, rb_thread_t *th)
 {
   th->thgroup = thgroup;
@@ -2622,6 +2682,9 @@ static VALUE rb_rg_tracer_start_trace(VALUE obj)
   rb_event_flag_t events;
   rb_rg_get_tracer(obj);
   rb_rg_get_current_thread_trace_context();
+
+  // On Ruby 3.3+ with M:N scheduler, current_thread can be NULL during finalization/shutdown
+  if (UNLIKELY(!current_thread)) return Qfalse;
 
   // If the tracer is in noop (silent) mode, do nothing - this would only be true if the minimum inferred Agent version is not met
   if (UNLIKELY(tracer->noop)) return Qfalse;
@@ -2680,6 +2743,10 @@ static VALUE rb_rg_tracer_end_trace(VALUE obj)
 {
     rb_rg_get_tracer(obj);
     rb_rg_get_current_thread_trace_context();
+
+    // On Ruby 3.3+ with M:N scheduler, current_thread can be NULL during finalization/shutdown
+    if (UNLIKELY(!current_thread)) return Qfalse;
+
     if(trace_context)
     {
       // Emit the END_TRANSACTION command via the encoder
@@ -2772,7 +2839,7 @@ static VALUE rb_rg_tracer_diagnostics(VALUE obj)
   printf("#### APM Tracer PID %d obj: %p size: %lu bytes\n", tracer->context->pid, (void *)obj, (unsigned long)rb_rg_tracer_size(tracer));
   printf("Methods: %d threads: %d nooped: %d\n", tracer->methods, tracer->threads, tracer->noop);
   printf("[Pointers] encoder context: %p threadsinfo: %p methodinfo: %p sink_data: %p batch: %p bipbuf: %p\n", (void *)tracer->context, (void *)tracer->threadsinfo, (void *)tracer->methodinfo, (void *)&tracer->sink_data, (void *)&tracer->sink_data.batch, (void *)tracer->sink_data.ringbuf.bipbuf);
-  printf("[Execution context] Raygun thread: %d Ruby current thread: %p thread group: %p\n", th->tid, (void *)thread, (void *)rb_rg_thread_group(GET_THREAD()));
+  printf("[Execution context] Raygun thread: %d Ruby current thread: %p thread group: %p\n", th->tid, (void *)thread, (void *)rb_rg_thread_group_from_value(thread));
   printf("[Ruby threads] timer thread: %p sink thread: %p\n", (void *)tracer->timer_thread, (void *)tracer->sink_thread);
   if (tracer->sink_data.type == RB_RG_TRACER_SINK_UDP || tracer->sink_data.type == RB_RG_TRACER_SINK_TCP) {
     printf("[Encoder] batched: %lu raw: %lu flushed: %lu resets: %lu batches: %lu\n", (unsigned long) tracer->sink_data.encoded_batched, (unsigned long) tracer->sink_data.encoded_raw, (unsigned long) tracer->sink_data.flushed, (unsigned long) tracer->sink_data.resets, (unsigned long)tracer->sink_data.batches);
@@ -2885,6 +2952,7 @@ void _init_raygun_tracer()
   rb_rg_id_tcp_socket = rb_intern("TCPSocket");
   rb_rg_id_new = rb_intern("new");
   rb_rg_id_default = rb_intern("Default");
+  rb_rg_id_group = rb_intern("group");
 
   // do the thread group class name lookup ahead of time so we don't incur runtime overhead for this
   rb_rg_cThGroup = rb_const_get(rb_cObject, rb_rg_id_th_group);
