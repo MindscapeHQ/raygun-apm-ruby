@@ -32,10 +32,6 @@
 # error "Raygun APM requires Ruby >= 2.5.0"
 #endif
 
-#if RUBY_API_VERSION_MAJOR >= 5
-# error "Raygun APM has not been tested with Ruby 5.x. Please check for updates."
-#endif
-
 #include "raygun.h"
 #include "raygun_errors.h"
 
