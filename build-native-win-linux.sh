@@ -6,17 +6,21 @@ export HOME=/usr/local/home
 REQUIRED_MAJOR=3
 REQUIRED_MINOR=1
 
+setup_rbenv_path() {
+  export PATH="$HOME/.rbenv/bin:$HOME/.rbenv/shims:$PATH"
+}
+
 install_ruby() {
   echo "Installing Ruby ${REQUIRED_MAJOR}.${REQUIRED_MINOR}..."
   
   # Install rbenv if not present
-  if ! command -v rbenv &> /dev/null; then
+  if [ ! -d "$HOME/.rbenv" ]; then
     echo "Installing rbenv..."
-    curl -fsSL https://github.com/rbenv/rbenv-installer/raw/HEAD/bin/rbenv-installer | bash
+    git clone https://github.com/rbenv/rbenv.git "$HOME/.rbenv"
+    git clone https://github.com/rbenv/ruby-build.git "$HOME/.rbenv/plugins/ruby-build"
   fi
   
-  export PATH="$HOME/.rbenv/bin:$HOME/.rbenv/shims:$PATH"
-  eval "$(rbenv init - bash)"
+  setup_rbenv_path
   
   # Install Ruby
   rbenv install -s ${REQUIRED_MAJOR}.${REQUIRED_MINOR}.0
@@ -28,7 +32,7 @@ install_ruby() {
 
 # Check Ruby version using Ruby itself (no bc dependency)
 needs_install=false
-if command -v ruby &> /dev/null; then
+if command -v ruby > /dev/null 2>&1; then
   RUBY_MAJOR=$(ruby -e "puts RUBY_VERSION.split('.')[0].to_i")
   RUBY_MINOR=$(ruby -e "puts RUBY_VERSION.split('.')[1].to_i")
   echo "Found Ruby: $(ruby -v)"
@@ -43,12 +47,13 @@ else
   needs_install=true
 fi
 
-if [ "$needs_install" = true ]; then
+if [ "$needs_install" = "true" ]; then
   echo "Ruby version too old or missing, need >= ${REQUIRED_MAJOR}.${REQUIRED_MINOR}"
   install_ruby
-  export PATH="$HOME/.rbenv/bin:$HOME/.rbenv/shims:$PATH"
-  eval "$(rbenv init - bash)"
 fi
+
+# Ensure rbenv ruby is in PATH
+setup_rbenv_path
 
 echo "Using Ruby: $(ruby -v)"
 
