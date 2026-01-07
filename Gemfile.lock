@@ -2,7 +2,7 @@ PATH
   remote: .
   specs:
     raygun-apm (1.1.15.pre1)
-      debase-ruby_core_source (>= 3.3.6, < 5.0)
+      debase-ruby_core_source (>= 3.3.6)
 
 GEM
   remote: https://rubygems.org/
@@ -49,7 +49,7 @@ GEM
       logger
       mime-types-data (~> 3.2025, >= 3.2025.0507)
     mime-types-data (3.2025.0924)
-    minitest (5.14.4)
+    minitest (5.27.0)
     mongo (2.22.0)
       base64
       bson (>= 4.14.1, < 6.0.0)
@@ -72,7 +72,7 @@ GEM
     rake (13.0.6)
     rake-compiler (1.1.9)
       rake
-    rake-compiler-dock (1.2.2)
+    rake-compiler-dock (1.11.1)
     rdoc (7.0.3)
       erb
       psych (>= 4.0.0)
@@ -94,27 +94,28 @@ GEM
 PLATFORMS
   arm64-darwin-25
   ruby
+  x64-mingw-ucrt
 
 DEPENDENCIES
   benchmark_driver (~> 0.15.9)
   bundler (>= 2.2.15)
   csv
-  debase-ruby_core_source (>= 3.3.6, < 5.0)
+  debase-ruby_core_source (>= 3.3.6)
   excon (~> 0.73.0)
   faraday (~> 1.0.1)
   httparty (~> 0.18.0)
   httpclient (~> 2.8.3)
   irb
-  minitest (~> 5.14.4)
+  minitest (~> 5.16)
   mongoid (~> 7.1.2)
   multipart-post (~> 2.1.1)
   mutex_m
   ostruct
   rake (~> 13.0.3)
   rake-compiler (~> 1.1.1)
-  rake-compiler-dock (~> 1.2.1)
+  rake-compiler-dock (~> 1.11.0)
   raygun-apm!
   rest-client (~> 2.1.0)
 
 BUNDLED WITH
-   2.6.9
+  4.0.3
