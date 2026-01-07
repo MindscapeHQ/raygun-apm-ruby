@@ -118,4 +118,4 @@ DEPENDENCIES
   rest-client (~> 2.1.0)
 
 BUNDLED WITH
-  4.0.3
+   2.2.15
