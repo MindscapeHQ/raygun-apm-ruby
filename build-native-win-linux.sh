@@ -13,6 +13,11 @@ setup_rbenv_path() {
 install_ruby() {
   echo "Installing Ruby ${REQUIRED_MAJOR}.${REQUIRED_MINOR}..."
   
+  # Install build dependencies
+  echo "Installing build dependencies..."
+  apt-get update -qq
+  apt-get install -y -qq autoconf bison build-essential libssl-dev libyaml-dev libreadline-dev zlib1g-dev libncurses5-dev libffi-dev libgdbm-dev
+  
   # Install rbenv if not present
   if [ ! -d "$HOME/.rbenv" ]; then
     echo "Installing rbenv..."
