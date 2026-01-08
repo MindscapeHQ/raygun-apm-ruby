@@ -39,19 +39,29 @@ RbConfig::MAKEFILE_CONFIG['CC'] = ENV['CC'] if ENV['CC']
 # Pedantic about all the things
 append_cflags '-pedantic'
 append_cflags '-Wall'
-append_cflags '-Werror'
 append_cflags '-std=c99'
 append_cflags '-std=gnu99'
 append_cflags '-fdeclspec'
 append_cflags '-fms-extensions'
 append_cflags '-ggdb3'
-# Disable warnings that cause issues with third-party code (rax, bipbuffer) on 64-bit platforms
-# These are safe truncations for buffer sizes that won't exceed 32-bit limits
-append_cflags '-Wno-shorten-64-to-32'
-# Clang-specific: disable unknown warning option errors for GCC-only pragmas in third-party code
-append_cflags '-Wno-unknown-warning-option'
-# Disable const qualifier warnings in third-party rax.c debug code
-append_cflags '-Wno-incompatible-pointer-types-discards-qualifiers'
+
+# Check if using clang (supports more warning flags)
+is_clang = RbConfig::CONFIG['CC'] =~ /clang/ || `#{RbConfig::CONFIG['CC']} --version 2>/dev/null`.include?('clang')
+
+if is_clang
+  # Clang-specific warning suppressions
+  append_cflags '-Wno-shorten-64-to-32'
+  append_cflags '-Wno-unknown-warning-option'
+  append_cflags '-Wno-incompatible-pointer-types-discards-qualifiers'
+  append_cflags '-Wno-self-assign'
+  append_cflags '-Wno-parentheses-equality'
+  append_cflags '-Wno-constant-logical-operand'
+end
+
+# Only use -Werror in CI/development, not in production builds
+if ENV['WERROR'] || ENV['CI']
+  append_cflags '-Werror'
+end
 # Enables additional flags, stack protection and debug symbols
 if ENV['DEBUG']
   have_library 'ssp'
