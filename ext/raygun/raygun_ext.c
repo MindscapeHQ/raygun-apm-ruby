@@ -4,7 +4,7 @@ VALUE rb_mRaygun;
 VALUE rb_mRaygunApm;
 
 // The main extension initializer called by the Ruby VM (Init_* convetion)
-void Init_raygun_ext()
+void Init_raygun_ext(void)
 {
   // Public Ruby API
   rb_mRaygun = rb_define_module("Raygun");

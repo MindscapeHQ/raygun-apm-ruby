@@ -103,7 +103,7 @@ rb_thread_t *rb_rg_thread_struct_from_object(VALUE thread)
 }
 
 // Log errors silenced in timer and dispatch threads by rb_protect
-static void rb_rg_log_silenced_error()
+static void rb_rg_log_silenced_error(void)
 {
   VALUE exception = rb_errinfo();
   VALUE msg = rb_check_funcall(exception, rb_rg_id_message, 0, 0);
@@ -2925,7 +2925,7 @@ rg_thread_t *rb_rg_thread(rb_rg_tracer_t *tracer, VALUE thread)
 }
 
 // Ruby API initializer
-void _init_raygun_tracer()
+void _init_raygun_tracer(void)
 {
   // Warms up symbols used in this tracer module
   rb_rg_id_send = rb_intern("send");

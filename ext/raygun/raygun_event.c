@@ -462,7 +462,7 @@ VALUE rb_rg_event_length(VALUE obj)
 }
 
 // Initializes the Ruby API, formal Event classes, methods and the bucket list of symbols representative to event fields
-void _init_raygun_event()
+void _init_raygun_event(void)
 {
   // symbol warmup
   rb_rg_id_escape = rb_intern("escape");
