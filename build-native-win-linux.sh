@@ -4,7 +4,7 @@ set -e
 export HOME=/usr/local/home
 
 REQUIRED_MAJOR=3
-REQUIRED_MINOR=1
+REQUIRED_MINOR=2
 
 setup_rbenv_path() {
   export PATH="$HOME/.rbenv/bin:$HOME/.rbenv/shims:$PATH"
