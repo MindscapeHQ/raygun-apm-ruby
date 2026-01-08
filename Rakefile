@@ -84,7 +84,8 @@ task 'gem:native' do
     win_fix = plat =~ /mingw/ ? "find /usr/local/rake-compiler -name win32.h | while read f ; do sudo sed -i 's/gettimeofday/rb_gettimeofday/' $f ; done && " : ""
     # Install debase-ruby_core_source globally so it's available during cross-compilation
     debase_install = "gem install debase-ruby_core_source --no-document && "
-    RakeCompilerDock.sh "#{win_fix}#{debase_install}bundle --local && rake clean && rake native:#{plat} gem RUBY_CC_VERSION=#{rubies} #{extra_env_vars.join(" ")}", platform: plat, verbose: true
+    # Use MAKE=make to avoid host compilation, cross native:PLATFORM for cross-compile only
+    RakeCompilerDock.sh "#{win_fix}#{debase_install}bundle --local && rake clean && rake cross native:#{plat} pkg/raygun-apm-#{Raygun::Apm::VERSION}-#{plat}.gem RUBY_CC_VERSION=#{rubies} #{extra_env_vars.join(" ")}", platform: plat, verbose: true
   end
 end
 
