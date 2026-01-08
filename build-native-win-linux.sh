@@ -69,3 +69,7 @@ gem install bundler --no-document --conservative
 bundle config set --local path vendor/cache
 bundle install
 bundle exec rake gem:native
+
+# Run tests
+echo "Running unit tests..."
+bundle exec rake test
