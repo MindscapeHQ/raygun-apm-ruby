@@ -234,7 +234,7 @@ static VALUE rb_rg_event_aset(VALUE obj, VALUE attr, VALUE val)
     event->data.begin_transaction.api_key.encoding = RG_STRING_ENCODING_ASCII;
     rb_rg_encode_string(&event->data.begin_transaction.api_key, val, Qnil);
   } else {
-    rb_raise(rb_eRaygunFatal, "Invalid attribute name:%p", (void*)attr);
+    rb_raise(rb_eRaygunFatal, "Invalid attribute name:%s", rb_id2name(symbol));
   }
   event->length = rg_encode_size(event);
   RB_GC_GUARD(attr);
@@ -345,7 +345,7 @@ static VALUE rb_rg_event_aref(VALUE obj, VALUE attr)
       val = rb_str_new(event->data.begin_transaction.process_type.string, event->data.begin_transaction.process_type.length);
     }
   } else {
-    rb_raise(rb_eRaygunFatal, "Invalid attribute name:%p", (void*)attr);
+    rb_raise(rb_eRaygunFatal, "Invalid attribute name:%s", rb_id2name(symbol));
   }
   RB_GC_GUARD(attr);
   return val;
@@ -462,7 +462,7 @@ VALUE rb_rg_event_length(VALUE obj)
 }
 
 // Initializes the Ruby API, formal Event classes, methods and the bucket list of symbols representative to event fields
-void _init_raygun_event()
+void _init_raygun_event(void)
 {
   // symbol warmup
   rb_rg_id_escape = rb_intern("escape");

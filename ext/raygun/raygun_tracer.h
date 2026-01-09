@@ -163,7 +163,31 @@ extern const rb_data_type_t rb_rg_tracer_type;
   TypedData_Get_Struct(obj, rb_rg_tracer_t, &rb_rg_tracer_type, tracer); \
   if (UNLIKELY(!tracer)) rb_raise(rb_eRaygunFatal, "Could not initialize tracer"); \
 
+// Safe thread struct extraction from VALUE thread object
+// Uses lazy-initialized type descriptor cache pattern (inspired by Datadog dd-trace-rb)
+// This avoids TLS crashes on ARM64 during shutdown with Ruby 3.3+ M:N scheduler
+//
+rb_thread_t *rb_rg_thread_struct_from_object(VALUE thread);
+
 // Lookup helper for the current Trace Context from the running Ruby Thread
+//
+// IMPORTANT: On Ruby 3.3+ with M:N scheduler on ARM64, rb_current_ec() can return NULL
+// or crash during TLS access in edge cases (finalization, shutdown, or from spawned 
+// threads before the EC is fully initialized). We use rb_thread_current() which is
+// a safe public API, then extract the thread struct via type-checked data access.
+//
+#if RG_RUBY_VER_GE(3, 3)
+#define rb_rg_get_current_thread_trace_context() \
+  VALUE thread = rb_thread_current(); \
+  rb_thread_t *current_thread = NIL_P(thread) ? NULL : rb_rg_thread_struct_from_object(thread); \
+  rb_rg_trace_context_t *trace_context = NULL; \
+  VALUE thgroup = current_thread ? rb_rg_thread_group(current_thread) : Qnil; \
+  if (current_thread && !NIL_P(thgroup)) { \
+    st_lookup(tracer->tracecontexts, (st_data_t)thgroup, (st_data_t *)&trace_context); \
+  } \
+  RB_GC_GUARD(thread); \
+  RB_GC_GUARD(thgroup);
+#else
 #define rb_rg_get_current_thread_trace_context() \
   rb_thread_t *current_thread = GET_THREAD(); \
   rb_rg_trace_context_t *trace_context = NULL; \
@@ -171,7 +195,8 @@ extern const rb_data_type_t rb_rg_tracer_type;
   VALUE thgroup = rb_rg_thread_group(current_thread); \
   st_lookup(tracer->tracecontexts, (st_data_t)thgroup, (st_data_t *)&trace_context); \
   RB_GC_GUARD(thread); \
-  RB_GC_GUARD(thgroup); \
+  RB_GC_GUARD(thgroup);
+#endif
 
 void _init_raygun_tracer();
 

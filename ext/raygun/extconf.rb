@@ -2,8 +2,28 @@
 
 # Makefile generator helper - from standard library
 require 'mkmf'
-# References core headers extracted by Ruby minor version in https://github.com/os97673/debase-ruby_core_source . Required for some of the lower level profiler features
-require 'debase/ruby_core_source'
+
+# References core headers extracted by Ruby minor version in https://github.com/os97673/debase-ruby_core_source
+# Required for some of the lower level profiler features (vm_core.h, rb_thread_t, etc.)
+begin
+  require 'debase/ruby_core_source'
+rescue LoadError => e
+  STDERR.puts "=" * 70
+  STDERR.puts "Raygun APM: Failed to load debase-ruby_core_source"
+  STDERR.puts ""
+  STDERR.puts "This gem is required to compile the native extension against Ruby VM internals."
+  STDERR.puts "Please ensure debase-ruby_core_source >= 3.3.6 is installed:"
+  STDERR.puts ""
+  STDERR.puts "  gem install debase-ruby_core_source"
+  STDERR.puts ""
+  STDERR.puts "Error: #{e.message}"
+  STDERR.puts "=" * 70
+  exit(1)
+end
+
+# Verify we have headers for the current Ruby version
+ruby_version = "#{RUBY_VERSION}"
+STDERR.puts "[Raygun APM] Building native extension for Ruby #{ruby_version}"
 
 headers = proc do
   have_header('ruby.h') &&
@@ -19,12 +39,29 @@ RbConfig::MAKEFILE_CONFIG['CC'] = ENV['CC'] if ENV['CC']
 # Pedantic about all the things
 append_cflags '-pedantic'
 append_cflags '-Wall'
-append_cflags '-Werror'
 append_cflags '-std=c99'
 append_cflags '-std=gnu99'
 append_cflags '-fdeclspec'
 append_cflags '-fms-extensions'
 append_cflags '-ggdb3'
+
+# Check if using clang (supports more warning flags)
+is_clang = RbConfig::CONFIG['CC'] =~ /clang/ || `#{RbConfig::CONFIG['CC']} --version 2>/dev/null`.include?('clang')
+
+if is_clang
+  # Clang-specific warning suppressions
+  append_cflags '-Wno-shorten-64-to-32'
+  append_cflags '-Wno-unknown-warning-option'
+  append_cflags '-Wno-incompatible-pointer-types-discards-qualifiers'
+  append_cflags '-Wno-self-assign'
+  append_cflags '-Wno-parentheses-equality'
+  append_cflags '-Wno-constant-logical-operand'
+end
+
+# Only use -Werror in CI/development, not in production builds
+if ENV['WERROR'] || ENV['CI']
+  append_cflags '-Werror'
+end
 # Enables additional flags, stack protection and debug symbols
 if ENV['DEBUG']
   have_library 'ssp'
@@ -54,7 +91,20 @@ end
 
 # Check for the presence of headers in ruby_core_headers for the version currently compiled for
 unless Debase::RubyCoreSource.create_makefile_with_core(headers, 'raygun_ext')
-  STDERR.print("Makefile creation failed\n")
-  STDERR.print("One or more ruby headers not found\n")
+  STDERR.puts "=" * 70
+  STDERR.puts "Raygun APM: Makefile creation failed"
+  STDERR.puts ""
+  STDERR.puts "One or more Ruby VM headers (vm_core.h) were not found for Ruby #{ruby_version}."
+  STDERR.puts ""
+  STDERR.puts "This usually means debase-ruby_core_source does not yet have headers"
+  STDERR.puts "for your Ruby version. Please try updating the gem:"
+  STDERR.puts ""
+  STDERR.puts "  gem update debase-ruby_core_source"
+  STDERR.puts ""
+  STDERR.puts "If the problem persists, please report this issue at:"
+  STDERR.puts "  https://github.com/MindscapeHQ/raygun-apm-ruby/issues"
+  STDERR.puts "=" * 70
   exit(1)
 end
+
+STDERR.puts "[Raygun APM] Native extension configured successfully"

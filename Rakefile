@@ -10,9 +10,12 @@ end
 
 gemspec = Gem::Specification.load('raygun-apm.gemspec')
 
-SUPPORTED_RUBY_VERSIONS = "2.5.0:2.6.0:2.7.0:3.0.0:3.1.0"
-# special case because no 3.1 support on x64_mingw32 - https://rubyinstaller.org/2021/12/31/rubyinstaller-3.1.0-1-released.html
-SUPPORTED_X64_MING32_RUBY_VERSIONS = "2.5.0:2.6.0:2.7.0:3.0.0"
+# Ruby versions available in rake-compiler-dock 1.11.1 containers
+# Limited to versions with debase-ruby_core_source support
+SUPPORTED_RUBY_VERSIONS = "3.0.7:3.1.7:3.2.9"
+# x64-mingw32 is for Ruby 3.0 and earlier; x64-mingw-ucrt is for Ruby 3.1+
+SUPPORTED_X64_MINGW32_RUBY_VERSIONS = "3.0.7"
+SUPPORTED_X64_MINGW_UCRT_RUBY_VERSIONS = "3.1.7:3.2.9"
 
 rubies_to_clean = []
 SUPPORTED_RUBY_VERSIONS.split(":").each do |version|
@@ -25,7 +28,7 @@ exttask = Rake::ExtensionTask.new('raygun') do |ext|
   ext.lib_dir = 'lib/raygun'
   ext.gem_spec = gemspec
   ext.cross_compile = true
-  ext.cross_platform = %w[x86-mingw32 x64-mingw32 x86-linux x86_64-linux universal-darwin]
+  ext.cross_platform = %w[x86-mingw32 x64-mingw32 x64-mingw-ucrt x86-linux x86_64-linux x86_64-darwin arm64-darwin]
   CLEAN.include 'tmp', 'lib/**/raygun_ext.*'
   CLEAN.include *rubies_to_clean
 end
@@ -60,21 +63,30 @@ end
 desc 'Compile native gems for distribution (Linux and Windows)'
 task 'gem:native' do
   require 'rake_compiler_dock'
-  sh "rm -Rf pkg" # ensure clean package state
-  sh "bundle package"   # Avoid repeated downloads of gems by using gem files from the host.
+  require 'fileutils'
+  FileUtils.rm_rf 'pkg' # ensure clean package state
+  Bundler.with_unbundled_env { system "bundle package" } # Avoid repeated downloads of gems by using gem files from the host.
   extra_env_vars = []
   if ENV['DEBUG']
     extra_env_vars << 'DEBUG=1'
   end
   exttask.cross_platform.each do |plat|
     next if plat =~ /darwin/
-    rubies = if plat == "x64-mingw32"
-      SUPPORTED_X64_MING32_RUBY_VERSIONS
+    rubies = case plat
+    when "x64-mingw32", "x86-mingw32"
+      SUPPORTED_X64_MINGW32_RUBY_VERSIONS
+    when "x64-mingw-ucrt"
+      SUPPORTED_X64_MINGW_UCRT_RUBY_VERSIONS
     else
       SUPPORTED_RUBY_VERSIONS
     end
-    # Avoid conflicting declarations of gettimeofday: https://github.com/rake-compiler/rake-compiler-dock/issues/32
-    RakeCompilerDock.sh "find /usr/local/rake-compiler -name win32.h | while read f ; do sudo sed -i 's/gettimeofday/rb_gettimeofday/' $f ; done && bundle --local && rake clean && rake native:#{plat} gem RUBY_CC_VERSION=#{rubies} #{extra_env_vars.join(" ")}", platform: plat, verbose: true
+    # Fix gettimeofday conflict for Windows builds
+    win_fix = plat =~ /mingw/ ? "find /usr/local/rake-compiler -name win32.h | while read f ; do sudo sed -i 's/gettimeofday/rb_gettimeofday/' $f ; done && " : ""
+    # Install debase-ruby_core_source globally so it's available during cross-compilation
+    debase_install = "gem install debase-ruby_core_source --no-document && "
+    # Build native extension only, then manually package the gem to avoid host Ruby 4.0.0 compilation
+    build_gem = "cd tmp/#{plat}/stage && sed -i 's/spec.platform = Gem::Platform::RUBY/spec.platform = \"#{plat}\"/' raygun-apm.gemspec && sed -i 's/spec.extensions = .*/# native extension already compiled/' raygun-apm.gemspec && gem build raygun-apm.gemspec && mv *.gem ../../../pkg/"
+    RakeCompilerDock.sh "#{win_fix}#{debase_install}bundle --local && rake clean && rake native:#{plat} RUBY_CC_VERSION=#{rubies} #{extra_env_vars.join(" ")} && mkdir -p pkg && #{build_gem}", platform: plat, verbose: true
   end
 end
 
