@@ -4,6 +4,6 @@
 extern VALUE rb_mRaygunApm;
 extern VALUE rb_eRaygunFatal;
 
-void _init_raygun_errors();
+void _init_raygun_errors(void);
 
 #endif

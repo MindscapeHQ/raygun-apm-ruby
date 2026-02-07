@@ -9,7 +9,7 @@ extern VALUE rb_cRaygunRingbuf;
 
 // Ruby interface that wraps https://github.com/willemt/bipbuffer - currently not used, but useful to keep around for more detalied sink tests if ever needed
 
-void _init_raygun_ringbuf();
+void _init_raygun_ringbuf(void);
 typedef struct _rg_ringbuf_t
 {
     bipbuf_t *bipbuf;

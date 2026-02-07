@@ -18,7 +18,7 @@
 // CT_PROCESS_FREQUENCY
 #define TIMESTAMP_UNITS_PER_SECOND 1000000 // usec
 
-rg_unsigned_int_t rg_getpid();
-rg_timestamp_t rg_timestamp();
+rg_unsigned_int_t rg_getpid(void);
+rg_timestamp_t rg_timestamp(void);
 
 #endif

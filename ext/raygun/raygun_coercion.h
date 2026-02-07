@@ -96,7 +96,7 @@ static inline rg_unsigned_long_t rb_rg_encode_unsigned_long(VALUE obj)
 rg_variable_info_t rb_rg_vt_coerce(VALUE name, VALUE obj, VALUE ecopts);
 void rb_rg_variable_info_init(rg_variable_info_t *var, VALUE obj, rg_variable_t type);
 
-void _init_raygun_coercion();
+void _init_raygun_coercion(void);
 
 //rb_protect wrappers
 VALUE rb_protect_rb_big2ull(VALUE arg);

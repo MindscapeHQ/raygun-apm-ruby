@@ -198,6 +198,6 @@ rb_thread_t *rb_rg_thread_struct_from_object(VALUE thread);
   RB_GC_GUARD(thgroup);
 #endif
 
-void _init_raygun_tracer();
+void _init_raygun_tracer(void);
 
 #endif

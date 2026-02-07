@@ -56,12 +56,16 @@ if is_clang
   append_cflags '-Wno-self-assign'
   append_cflags '-Wno-parentheses-equality'
   append_cflags '-Wno-constant-logical-operand'
+else
+  # GCC 12+ use-after-free false positive in third-party rax.c
+  append_cflags '-Wno-use-after-free'
 end
 
 # Only use -Werror in CI/development, not in production builds
 if ENV['WERROR'] || ENV['CI']
   append_cflags '-Werror'
 end
+
 # Enables additional flags, stack protection and debug symbols
 if ENV['DEBUG']
   have_library 'ssp'

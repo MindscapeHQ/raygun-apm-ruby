@@ -42,7 +42,7 @@ rg_short_t rg_encode_size(const rg_event_t *event);
 
 // Context init
 
-rg_context_t *rg_context_alloc();
+rg_context_t *rg_context_alloc(void);
 
 // Event handler APIs - encodes to raw wire protocol and invokes the sink callback function
 
