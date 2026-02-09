@@ -127,6 +127,9 @@ task 'diagram' do
 end
 
 
+desc 'Build all 7 platform gems + source gem (requires Docker + macOS)'
+task 'gem:all' => ['gem:native', 'gem:native:darwin']
+
 task :test => :compile
 task :perf => :compile
 task :default => :test

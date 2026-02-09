@@ -47,6 +47,14 @@ bundle exec rake test       # Run the test suite
 
 ## Building Platform Gems
 
+### Build all 7 platform gems (single command, requires Docker + macOS)
+
+```bash
+bundle exec rake gem:all
+```
+
+This runs `gem:native` (Docker) then `gem:native:darwin` (native) and produces all gems in `pkg/`.
+
 ### Step 1: Build Linux and Windows gems (Docker)
 
 This uses `rake-compiler-dock` to cross-compile inside Docker containers. No Windows or Linux VM needed.
