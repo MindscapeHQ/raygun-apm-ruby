@@ -97,12 +97,10 @@ task 'gem:native:darwin' do
   config_dir = File.expand_path("~/.rake-compiler")
   config_path = File.expand_path("#{config_dir}/config.yml")
   FileUtils.mkdir_p config_dir
-  open config_path, "w" do |f|
-    f.puts "rbconfig-universal-darwin-2.5.0: #{ENV["HOME"]}/.rubies/ruby-2.5.5/lib/ruby/2.5.0/#{RbConfig::CONFIG["sitearch"]}/rbconfig.rb"
-    f.puts "rbconfig-universal-darwin-2.6.0: #{ENV["HOME"]}/.rubies/ruby-2.6.6/lib/ruby/2.6.0/#{RbConfig::CONFIG["sitearch"]}/rbconfig.rb"
-    f.puts "rbconfig-universal-darwin-2.7.0: #{ENV["HOME"]}/.rubies/ruby-2.7.2/lib/ruby/2.7.0/#{RbConfig::CONFIG["sitearch"]}/rbconfig.rb"
-    f.puts "rbconfig-universal-darwin-3.0.0: #{ENV["HOME"]}/.rubies/ruby-3.0.1/lib/ruby/3.0.0/#{RbConfig::CONFIG["sitearch"]}/rbconfig.rb"
-    f.puts "rbconfig-universal-darwin-3.1.0: #{ENV["HOME"]}/.rubies/ruby-3.1.0/lib/ruby/3.1.0/#{RbConfig::CONFIG["sitearch"]}/rbconfig.rb"
+  File.open(config_path, "w") do |f|
+    f.puts "rbconfig-universal-darwin-3.0.0: #{ENV["HOME"]}/.rubies/ruby-3.0.7/lib/ruby/3.0.0/#{RbConfig::CONFIG["sitearch"]}/rbconfig.rb"
+    f.puts "rbconfig-universal-darwin-3.1.0: #{ENV["HOME"]}/.rubies/ruby-3.1.7/lib/ruby/3.1.0/#{RbConfig::CONFIG["sitearch"]}/rbconfig.rb"
+    f.puts "rbconfig-universal-darwin-3.2.0: #{ENV["HOME"]}/.rubies/ruby-3.2.9/lib/ruby/3.2.0/#{RbConfig::CONFIG["sitearch"]}/rbconfig.rb"
   end
 
   sh "bundle package"   # Avoid repeated downloads of gems by using gem files from the host.
