@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    raygun-apm (1.1.15.pre1)
+    raygun-apm (1.1.15.pre3)
       debase-ruby_core_source (>= 3.3.6)
 
 GEM
@@ -118,4 +118,4 @@ DEPENDENCIES
   rest-client (~> 2.1.0)
 
 BUNDLED WITH
-   2.2.15
+  4.0.3
