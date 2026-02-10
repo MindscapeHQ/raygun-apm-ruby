@@ -24,13 +24,13 @@ module Raygun
             return 
           end
           if filter.start_with?('+')
-            @tracer.add_whitelist *translate(filter[1..-1])
+            @tracer.add_whitelist(*translate(filter[1..-1]))
           elsif filter.start_with?('-')
-            @tracer.add_blacklist *translate(filter[1..-1])
+            @tracer.add_blacklist(*translate(filter[1..-1]))
           elsif filter.start_with?('L-')
-            @tracer.add_blacklist *translate(filter[2..-1])
+            @tracer.add_blacklist(*translate(filter[2..-1]))
           elsif filter.size > 0
-            @tracer.add_blacklist *translate(filter)
+            @tracer.add_blacklist(*translate(filter))
           end
         rescue => e
           puts "Failed to add line '#{filter}' to the blacklist (#{e}) #{e.backtrace.join("\n")}"

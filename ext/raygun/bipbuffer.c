@@ -24,19 +24,19 @@ int bipbuf_unused(const bipbuf_t* me)
 {
     if (1 == me->b_inuse)
         /* distance between region B and region A */
-        return me->a_start - me->b_end;
+        return (int)(me->a_start - me->b_end);
     else
-        return me->size - me->a_end;
+        return (int)(me->size - me->a_end);
 }
 
 int bipbuf_size(const bipbuf_t* me)
 {
-    return me->size;
+    return (int)me->size;
 }
 
 int bipbuf_used(const bipbuf_t* me)
 {
-    return (me->a_end - me->a_start) + me->b_end;
+    return (int)((me->a_end - me->a_start) + me->b_end);
 }
 
 void bipbuf_init(bipbuf_t* me, const unsigned int size)

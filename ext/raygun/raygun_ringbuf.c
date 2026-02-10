@@ -111,7 +111,7 @@ static VALUE rb_rg_ringbuf_alloc(VALUE klass)
 }
 
 // Init helper, called when raygun_ext.so is loaded
-void _init_raygun_ringbuf()
+void _init_raygun_ringbuf(void)
 {
 
     // Define the class

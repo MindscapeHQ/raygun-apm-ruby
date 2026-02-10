@@ -1275,12 +1275,13 @@ int raxIteratorAddChars(raxIterator *it, unsigned char *s, size_t len) {
         unsigned char *old = (it->key == it->key_static_string) ? NULL :
                                                                   it->key;
         size_t new_max = (it->key_len+len)*2;
-        it->key = rax_realloc(old,new_max);
-        if (it->key == NULL) {
+        unsigned char *newkey = rax_realloc(old,new_max);
+        if (newkey == NULL) {
             it->key = (!old) ? it->key_static_string : old;
             errno = ENOMEM;
             return 0;
         }
+        it->key = newkey;
         if (old == NULL) memcpy(it->key,it->key_static_string,it->key_len);
         it->key_max = new_max;
     }

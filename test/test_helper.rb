@@ -23,7 +23,7 @@ class Raygun::Test < Minitest::Test
   end
 end
 
-module MiniTest::Assertions
+module Minitest::Assertions
   def assert_fatal_error(message_matcher = nil)
     exception = assert_raises(Raygun::Apm::FatalError) { yield }
     if message_matcher

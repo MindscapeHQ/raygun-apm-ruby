@@ -40,6 +40,6 @@ extern const rb_data_type_t rb_rg_event_type;
 // API specific to extended events called from Ruby code to encode and inject them into the dispatch ring buffer
 VALUE rb_rg_event_encoded(VALUE obj);
 
-void _init_raygun_event();
+void _init_raygun_event(void);
 
 #endif

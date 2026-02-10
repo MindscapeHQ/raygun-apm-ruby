@@ -7,12 +7,30 @@
 #pragma GCC diagnostic ignored "-Wpedantic"
 #pragma GCC diagnostic ignored "-Woverflow"
 #include <ruby/ruby.h>
+#include <ruby/version.h>
 #include <ruby/encoding.h>
 #include <ruby/debug.h>
 #include <ruby/thread.h>
 #include "vm_core.h"
 #include <ruby/thread_native.h>
 #pragma GCC diagnostic pop
+
+// Ruby version comparison helper
+#ifndef RUBY_API_VERSION_MAJOR
+# define RUBY_API_VERSION_MAJOR RUBY_VERSION_MAJOR
+# define RUBY_API_VERSION_MINOR RUBY_VERSION_MINOR
+# define RUBY_API_VERSION_TEENY RUBY_VERSION_TEENY
+#endif
+
+#define RG_RUBY_VER_GE(maj, min) \
+  ((RUBY_API_VERSION_MAJOR > (maj)) || \
+   (RUBY_API_VERSION_MAJOR == (maj) && RUBY_API_VERSION_MINOR >= (min)))
+
+// Compile-time Ruby version checks
+#if RUBY_API_VERSION_MAJOR < 2 || \
+   (RUBY_API_VERSION_MAJOR == 2 && RUBY_API_VERSION_MINOR < 5)
+# error "Raygun APM requires Ruby >= 2.5.0"
+#endif
 
 #include "raygun.h"
 #include "raygun_errors.h"
@@ -78,7 +96,7 @@ static inline rg_unsigned_long_t rb_rg_encode_unsigned_long(VALUE obj)
 rg_variable_info_t rb_rg_vt_coerce(VALUE name, VALUE obj, VALUE ecopts);
 void rb_rg_variable_info_init(rg_variable_info_t *var, VALUE obj, rg_variable_t type);
 
-void _init_raygun_coercion();
+void _init_raygun_coercion(void);
 
 //rb_protect wrappers
 VALUE rb_protect_rb_big2ull(VALUE arg);

@@ -12,7 +12,7 @@ static int rg_event_sink_blackhole(rg_context_t *context, void *userdata, const 
 // * Assigns the timestamper to use
 //
 // The scratch buffer for encoding is a static buffer on the struct and thus no need to allocate explicitly
-rg_context_t *rg_context_alloc()
+rg_context_t *rg_context_alloc(void)
 {
   rg_context_t *context = calloc(1, sizeof(rg_context_t));
   if (!context) return NULL;

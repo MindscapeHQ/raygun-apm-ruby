@@ -66,9 +66,7 @@ module Raygun
       config_var 'PROTON_USE_MULTICAST', as: String, default: 'False'
       config_var 'PROTON_BATCH_IDLE_COUNTER', as: Integer, default: 500
       ## New - Ruby profiler
-      config_var 'PROTON_UDP_HOST', as: String, default: UDP_SINK_HOST
       config_var 'PROTON_UDP_PORT', as: Integer, default: UDP_SINK_PORT
-      config_var 'PROTON_TCP_HOST', as: String, default: TCP_SINK_HOST
       config_var 'PROTON_TCP_PORT', as: Integer, default: TCP_SINK_PORT
       ## Conditional hooks
       config_var 'PROTON_HOOK_REDIS', as: :boolean, default: 'True'

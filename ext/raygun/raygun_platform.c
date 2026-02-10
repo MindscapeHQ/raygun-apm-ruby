@@ -2,13 +2,13 @@
 #include "raygun_platform.h"
 
 // X platform getpid - works for Mac OS, ming32 and Linux
-rg_unsigned_int_t rg_getpid()
+rg_unsigned_int_t rg_getpid(void)
 {
   return (rg_unsigned_int_t)getpid();
 }
 
 // The high resolution timestamper applied to all events - works for Mac OS, mingw32 and Linux
-rg_timestamp_t rg_timestamp()
+rg_timestamp_t rg_timestamp(void)
 {
   struct timeval time;
   gettimeofday(&time, NULL);

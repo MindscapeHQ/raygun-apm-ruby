@@ -320,7 +320,7 @@ void rb_rg_variable_info_init(rg_variable_info_t *var, VALUE obj, rg_variable_t 
   }
 }
 
-void _init_raygun_coercion()
+void _init_raygun_coercion(void)
 {
   rg_utf16le_encoding = rb_enc_from_index(rb_enc_find_index("UTF-16LE"));
   rg_utf16be_encoding = rb_enc_from_index(rb_enc_find_index("UTF-16BE"));
